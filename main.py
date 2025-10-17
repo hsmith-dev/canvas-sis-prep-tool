@@ -4,9 +4,39 @@ import json
 import csv
 import os
 import webbrowser
+import sys
+
+
+# --- Helper function for finding assets ---
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        # Use the directory of the script file as the base path
+        base_path = os.path.dirname(os.path.abspath(__file__))
+
+    return os.path.join(base_path, relative_path)
+
+
+# --- Function to get a writable application data directory ---
+def get_app_data_path(app_name):
+    """ Get a writable path for application data. """
+    if sys.platform == "win32":
+        path = os.path.join(os.environ['APPDATA'], app_name)
+    else:  # macOS and Linux
+        path = os.path.join(os.path.expanduser('~'), '.' + app_name)
+
+    if not os.path.exists(path):
+        os.makedirs(path)
+    return path
+
 
 # --- Data File ---
-DATA_FILE = 'course_data.json'
+APP_NAME = "CanvasSISPrepTool"
+DATA_DIR = get_app_data_path(APP_NAME)
+DATA_FILE = os.path.join(DATA_DIR, 'course_data.json')
 
 
 # --- Core Data Models ---
@@ -49,7 +79,7 @@ class Course:
 class Term:
     """Represents an academic term."""
 
-    def __init__(self, term_id, name, short_code, start_date, end_date):
+    def __init__(self, term_id, name, short_code, start_date='', end_date=''):
         self.term_id = term_id
         self.name = name
         self.short_code = short_code
@@ -67,7 +97,8 @@ class Term:
 
     @staticmethod
     def from_dict(data):
-        return Term(data['term_id'], data.get('name', ''), data['short_code'], data['start_date'], data['end_date'])
+        return Term(data['term_id'], data.get('name', ''), data['short_code'], data.get('start_date', ''),
+                    data.get('end_date', ''))
 
 
 class Account:
@@ -239,7 +270,7 @@ class DataManager:
                                      'course_id_portion', Course)
 
     def import_terms_from_csv(self, file_path):
-        return self._import_csv_data(file_path, ['name', 'term_id', 'short_code', 'start_date', 'end_date'], self.terms,
+        return self._import_csv_data(file_path, ['name', 'term_id', 'short_code'], self.terms,
                                      'name', Term)
 
     def import_accounts_from_csv(self, file_path):
@@ -321,7 +352,7 @@ class App(tk.Tk):
         self.geometry("950x600")
 
         try:
-            icon = tk.PhotoImage(file='app_icon.png')
+            icon = tk.PhotoImage(file=resource_path('app_icon.png'))
             self.iconphoto(False, icon)
         except tk.TclError:
             print("app_icon.png not found, skipping icon.")
@@ -467,7 +498,7 @@ class App(tk.Tk):
         terms_frame = ttk.LabelFrame(frame, text="Terms", padding="10")
         terms_frame.grid(row=0, column=0, sticky="nsew", padx=5)
         self.terms_tree = self.create_sub_management_view(terms_frame,
-                                                          ('name', 'term_id', 'short_code', 'start_date', 'end_date'),
+                                                          ('name', 'term_id', 'short_code'),
                                                           "Term")
         self.terms_tree.bind("<Double-1>", lambda event: self.edit_item("Term", self.terms_tree))
 
@@ -502,7 +533,7 @@ class App(tk.Tk):
             self.terms_tree.delete(item)
         for tname, term in sorted(self.data_manager.terms.items()):
             self.terms_tree.insert("", "end",
-                                   values=(tname, term.term_id, term.short_code, term.start_date, term.end_date))
+                                   values=(tname, term.term_id, term.short_code))
 
     def refresh_accounts_list(self):
         for item in self.accounts_tree.get_children():
@@ -632,8 +663,7 @@ class App(tk.Tk):
             "Person": [('user_id', 'User ID'), ('name', 'Name')],
             "Course": [('course_id_portion', 'Course ID Portion'), ('short_name', 'Short Name'),
                        ('long_name', 'Long Name')],
-            "Term": [('name', 'Name (Unique)'), ('term_id', 'Term ID'), ('short_code', 'Short Code'),
-                     ('start_date', 'Start Date (YYYY-MM-DD)'), ('end_date', 'End Date (YYYY-MM-DD)')],
+            "Term": [('name', 'Name (Unique)'), ('term_id', 'Term ID'), ('short_code', 'Short Code')],
             "Account": [('account_id', 'Account ID')]
         }
         key_field = 'name' if item_name == "Term" else list(fields_map[item_name][0])[0]
@@ -670,8 +700,7 @@ class App(tk.Tk):
             "Person": [('user_id', 'User ID'), ('name', 'Name')],
             "Course": [('course_id_portion', 'Course ID Portion'), ('short_name', 'Short Name'),
                        ('long_name', 'Long Name')],
-            "Term": [('name', 'Name (Unique)'), ('term_id', 'Term ID'), ('short_code', 'Short Code'),
-                     ('start_date', 'Start Date'), ('end_date', 'End Date')],
+            "Term": [('name', 'Name (Unique)'), ('term_id', 'Term ID'), ('short_code', 'Short Code')],
             "Account": [('account_id', 'Account ID')]
         }
         key_field = 'name' if item_name == "Term" else list(fields_map[item_name][0])[0]
@@ -857,13 +886,12 @@ class ManagementDialog(simpledialog.Dialog):
         return self.entries[self.fields[0][0]]
 
     def buttonbox(self):
-        box = ttk.Frame(self)
-        box.config(bg=self.theme_colors['dialog_bg'])
+        box = ttk.Frame(self, style="TFrame")
+        box.pack()
         ttk.Button(box, text="OK", width=10, command=self.ok, default=tk.ACTIVE).pack(side=tk.LEFT, padx=5, pady=5)
         ttk.Button(box, text="Cancel", width=10, command=self.cancel).pack(side=tk.LEFT, padx=5, pady=5)
         self.bind("<Return>", self.ok)
         self.bind("<Escape>", self.cancel)
-        box.pack()
 
     def apply(self):
         self.result = {key: entry.get() for key, entry in self.entries.items()}
@@ -936,13 +964,12 @@ class SectionDialog(simpledialog.Dialog):
         return self.course_combo
 
     def buttonbox(self):
-        box = ttk.Frame(self)
-        box.config(bg=self.theme_colors['dialog_bg'])
+        box = ttk.Frame(self, style="TFrame")
+        box.pack()
         ttk.Button(box, text="OK", width=10, command=self.ok, default=tk.ACTIVE).pack(side=tk.LEFT, padx=5, pady=5)
         ttk.Button(box, text="Cancel", width=10, command=self.cancel).pack(side=tk.LEFT, padx=5, pady=5)
         self.bind("<Return>", self.ok)
         self.bind("<Escape>", self.cancel)
-        box.pack()
 
     def apply(self):
         term_str = self.term_var.get()
@@ -1040,8 +1067,8 @@ class EnrollmentDialog(simpledialog.Dialog):
             self.refresh_enrollments()
 
     def buttonbox(self):
-        box = ttk.Frame(self)
-        box.config(bg=self.theme_colors['dialog_bg'])
+        box = ttk.Frame(self, style="TFrame")
+        box.pack()
         ttk.Button(box, text="Close", width=10, command=self.ok, default=tk.ACTIVE).pack(side=tk.LEFT, padx=5, pady=5)
         self.bind("<Return>", self.ok)
         self.bind("<Escape>", self.cancel)
