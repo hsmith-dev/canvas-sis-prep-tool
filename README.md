@@ -7,8 +7,7 @@
 A user-friendly desktop application designed to streamline the creation of CSV files for Canvas SIS imports, with a focus on simplifying course shell creation.
 
 ---
-
-![Screenshot of the Canvas SIS Prep Tool application]([https://i.imgur.com/your-screenshot-url.png](https://github.com/hsmith-dev/canvas-sis-prep-tool/blob/main/app-image.png)) 
+![Screenshot of the Canvas SIS Prep Tool application](https://github.com/hsmith-dev/canvas-sis-prep-tool/blob/main/app-image.png?raw=true)
 
 ## 🎯 About The Project
 
