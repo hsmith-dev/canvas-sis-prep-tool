@@ -339,7 +339,7 @@ class App(tk.Tk):
         super().__init__()
         self.data_manager = data_manager
         self.title("Canvas SIS Prep Tool")
-        self.geometry("950x600")
+        self.geometry("1350x750")
         try:
             icon = tk.PhotoImage(file=resource_path('app_icon.png'))
             self.iconphoto(False, icon)
