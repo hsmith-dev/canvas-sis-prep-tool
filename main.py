@@ -29,12 +29,19 @@ def get_app_data_path(app_name):
         os.makedirs(path)
     return path
 
-
 # --- Data File ---
 APP_NAME = "CanvasSISPrepTool"
 DATA_DIR = get_app_data_path(APP_NAME)
 DATA_FILE = os.path.join(DATA_DIR, 'course_data.json')
 
+# --- NEW: Enrollment Role Mapping ---
+# Maps the display name to the value required for the CSV export
+ENROLLMENT_ROLE_MAP = {
+    "Student": "student",
+    "Teaching Assistant": "ta",
+    "Instructor": "teacher",
+    "Program Manager": "Program Manager" # Example, change as needed
+}
 
 # --- Core Data Models ---
 class Person:
@@ -300,8 +307,11 @@ class DataManager:
                                   'status': section.status, 'start_date': section.start_date,
                                   'end_date': section.end_date})
             for enrollment in section.enrollments:
+                # Look up the export value from the map
+                export_role = ENROLLMENT_ROLE_MAP.get(enrollment.role,
+                                                      enrollment.role)  # Fallbacks to the name itself if not in map
                 enrollment_data.append(
-                    {'section_id': section_id, 'user_id': enrollment.user_id, 'role': enrollment.role,
+                    {'section_id': section_id, 'user_id': enrollment.user_id, 'role': export_role,
                      'status': enrollment.status, 'course_id': course_id})
         prefix_str = f"{prefix} " if prefix else ""
         try:
@@ -542,7 +552,19 @@ class App(tk.Tk):
             return
         section_index = int(selected[0])
         section = self.data_manager.sections[section_index]
-        EnrollmentDialog(self, f"Enrollments for {section.course_id_portion}", section, self.data_manager,
+
+        # Get the corresponding term object to access its short code
+        term_obj = self.data_manager.terms.get(section.term_name)
+
+        if term_obj:
+            # Construct the full section ID for the title
+            full_section_id = f"{term_obj.short_code}-{section.course_id_portion}-{section.section_number}"
+            title = f"Enrollments for {full_section_id}"
+        else:
+            # Fallback title if the term is somehow not found
+            title = f"Enrollments for {section.course_id_portion}"
+
+        EnrollmentDialog(self, title, section, self.data_manager,
                          self.get_theme_colors())
 
     def delete_section(self):
@@ -936,7 +958,7 @@ class EnrollmentDialog(simpledialog.Dialog):
 
         self.role_var = tk.StringVar();
         self.role_combo = ttk.Combobox(add_frame, state="readonly", textvariable=self.role_var,
-                                       values=["Student", "Teaching Assistant", "Instructor", "Program Manager"]);
+                                       values=list(ENROLLMENT_ROLE_MAP.keys()))
         self.role_combo.grid(row=1, column=1, sticky="ew")
 
         status_label_frame = ttk.Frame(add_frame)
