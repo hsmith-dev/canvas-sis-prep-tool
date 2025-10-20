@@ -64,7 +64,6 @@ class Course:
         return Course(data['short_name'], data['long_name'], data['course_id_portion'])
 
 
-# --- MODIFIED: Term class simplified ---
 class Term:
     def __init__(self, term_id, name, short_code):
         self.term_id = term_id
@@ -76,7 +75,6 @@ class Term:
 
     @staticmethod
     def from_dict(data):
-        # Ignores start/end dates if they exist in old data files for backward compatibility
         return Term(data.get('term_id', ''), data.get('name', ''), data.get('short_code', ''))
 
 
@@ -233,6 +231,9 @@ class DataManager:
                     if not key or key in data_dict:
                         skipped_count += 1
                         continue
+                    if any(not row.get(h) for h in required_headers):
+                        skipped_count += 1
+                        continue
                     args = {h: row.get(h, '') for h in required_headers}
                     data_dict[key] = constructor(**args)
                     added_count += 1
@@ -247,7 +248,6 @@ class DataManager:
         return self._import_csv_data(file_path, ['course_id_portion', 'short_name', 'long_name'], self.courses,
                                      'course_id_portion', Course)
 
-    # --- MODIFIED: Removed dates from Term import ---
     def import_terms_from_csv(self, file_path):
         return self._import_csv_data(file_path, ['name', 'term_id', 'short_code'], self.terms,
                                      'name', Term)
@@ -255,9 +255,7 @@ class DataManager:
     def import_accounts_from_csv(self, file_path):
         return self._import_csv_data(file_path, ['account_id'], self.accounts, 'account_id', Account)
 
-    # --- MODIFIED: Removed dates from Term export ---
     def export_data_to_csvs(self, data_types_to_export, directory):
-        """Exports the selected data types to individual CSV files in the specified directory."""
         export_map = {
             'people': (self.people.values(), ['user_id', 'name']),
             'courses': (self.courses.values(), ['course_id_portion', 'short_name', 'long_name']),
@@ -280,7 +278,6 @@ class DataManager:
         except IOError as e:
             return f"Error writing files: {e}"
 
-    # --- MODIFIED: Canvas CSV generation relies only on Section dates ---
     def generate_csv_files(self, directory, prefix):
         if not self.sections:
             return "No sections created. Cannot generate CSV files."
@@ -293,11 +290,8 @@ class DataManager:
             course_id = f"{section.course_id_portion}-{term_obj.short_code}-{section.section_number}"
             section_id = f"{term_obj.short_code}-{section.course_id_portion}-{section.section_number}"
             long_name_with_section = f"{course_obj.long_name}-{section.section_number}"
-
-            # Dates now come only from the section
             effective_start_date = section.start_date
             effective_end_date = section.end_date
-
             courses_data.append(
                 {'course_id': course_id, 'short_name': course_obj.short_name, 'long_name': long_name_with_section,
                  'account_id': section.account_id, 'term_id': term_obj.term_id, 'status': section.status,
@@ -351,11 +345,11 @@ class App(tk.Tk):
         self.notebook.pack(pady=10, padx=10, expand=True, fill="both")
 
         self.create_sections_tab()
-        self.create_settings_tab()
         self.create_people_tab()
         self.create_courses_tab()
         self.create_terms_tab()
         self.create_accounts_tab()
+        self.create_settings_tab()
         self.create_about_tab()
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -392,6 +386,8 @@ class App(tk.Tk):
         style.configure("TLabelFrame.Label", background=colors["secondary"], foreground=colors["contrast"],
                         font=('TkDefaultFont', 10, 'bold'))
         style.configure("TLabel", background=colors["secondary"], foreground=colors["contrast"])
+        # New style for required field labels
+        style.configure("Required.TLabel", foreground="red", background=colors["secondary"])
         style.configure("link.TLabel", foreground=colors["highlight"], background=colors["secondary"],
                         font=('TkDefaultFont', 10, 'underline'))
         style.configure("Treeview", background=colors["surface"], foreground=colors["contrast"],
@@ -460,7 +456,6 @@ class App(tk.Tk):
                                                                                                                   course.short_name,
                                                                                                                   course.long_name))
 
-    # --- MODIFIED: Term tab columns updated ---
     def create_terms_tab(self):
         self.terms_tree = self.create_management_tab(self.notebook, "Terms",
                                                      ('name', 'term_id', 'short_code'),
@@ -472,7 +467,6 @@ class App(tk.Tk):
                                                         lambda tree: self.edit_item("Account", tree))
         self.refresh_accounts_list()
 
-    # --- MODIFIED: Term list refresh updated ---
     def refresh_terms_list(self):
         for item in self.terms_tree.get_children(): self.terms_tree.delete(item)
         for tname, term in sorted(self.data_manager.terms.items()): self.terms_tree.insert("", "end",
@@ -516,11 +510,15 @@ class App(tk.Tk):
                                                                 sec.end_date))
 
     def create_section(self):
-        dialog = SectionDialog(self, "Create Section", self.data_manager, self.get_theme_colors());
+        dialog = SectionDialog(self, "Create Section", self.data_manager, self.get_theme_colors())
         if dialog.result:
-            self.data_manager.sections.append(Section(**dialog.result));
+            new_section = Section(**dialog.result)
+            self.data_manager.sections.append(new_section)
             self.refresh_sections_list()
             self.data_manager.save_data()
+            section_index = len(self.data_manager.sections) - 1
+            self.sections_tree.selection_set(str(section_index))
+            self.manage_enrollments()
 
     def edit_section(self, event=None):
         selected = self.sections_tree.selection()
@@ -539,8 +537,10 @@ class App(tk.Tk):
 
     def manage_enrollments(self):
         selected = self.sections_tree.selection()
-        if not selected: messagebox.showwarning("Selection Error", "Please select a section to manage."); return
-        section_index = int(selected[0]);
+        if not selected:
+            messagebox.showwarning("Selection Error", "Please select a section to manage.", parent=self)
+            return
+        section_index = int(selected[0])
         section = self.data_manager.sections[section_index]
         EnrollmentDialog(self, f"Enrollments for {section.course_id_portion}", section, self.data_manager,
                          self.get_theme_colors())
@@ -572,13 +572,16 @@ class App(tk.Tk):
         key_field = 'name' if item_name == "Term" else list(fields_map[item_name][0])[0]
         dialog = ManagementDialog(self, f"Add {item_name}", fields_map[item_name], theme_colors=self.get_theme_colors())
         if not dialog.result: return
+        for key, value in dialog.result.items():
+            if not value:
+                messagebox.showerror("Input Error", f"{key.replace('_', ' ').title()} cannot be empty.", parent=self)
+                return
         key = dialog.result[key_field]
-        if not key: messagebox.showerror("Input Error",
-                                         f"{key_field.replace('_', ' ').title()} cannot be empty."); return
         data_map = {"Person": self.data_manager.people, "Course": self.data_manager.courses,
                     "Term": self.data_manager.terms, "Account": self.data_manager.accounts}
-        if key in data_map[item_name]: messagebox.showerror("Error",
-                                                            f"A {item_name.lower()} with this ID/Name already exists."); return
+        if key in data_map[item_name]:
+            messagebox.showerror("Error", f"A {item_name.lower()} with this ID/Name already exists.", parent=self)
+            return
         constructors = {"Person": Person, "Course": Course, "Term": Term, "Account": Account}
         data_map[item_name][key] = constructors[item_name](**dialog.result)
         refresh_map = {"Person": self.refresh_people_list, "Course": self.refresh_courses_list,
@@ -603,6 +606,10 @@ class App(tk.Tk):
         dialog = ManagementDialog(self, f"Edit {item_name}", fields_map[item_name], initial_data=item_obj.to_dict(),
                                   readonly_key=key_field, theme_colors=self.get_theme_colors())
         if not dialog.result: return
+        for k, value in dialog.result.items():
+            if k != key_field and not value:
+                messagebox.showerror("Input Error", f"{k.replace('_', ' ').title()} cannot be empty.", parent=self)
+                return
         if item_name == "Term":
             new_name = dialog.result['name'];
             old_name = key
@@ -647,19 +654,16 @@ class App(tk.Tk):
     def create_settings_tab(self):
         frame = ttk.Frame(self.notebook, padding="20")
         self.notebook.add(frame, text="Actions")
-
         canvas_frame = ttk.LabelFrame(frame, text="Canvas SIS Files", padding=10)
         canvas_frame.pack(fill="x", pady=(0, 10))
         ttk.Button(canvas_frame, text="Generate Canvas CSV Files...", style="Accent.TButton",
                    command=self.generate_csv).pack(pady=10, ipady=5, fill='x')
-
         data_frame = ttk.LabelFrame(frame, text="Application Data", padding=10)
         data_frame.pack(fill="x", pady=10)
         ttk.Button(data_frame, text="Import Data from CSVs...", command=self.open_import_dialog).pack(pady=5, ipady=5,
                                                                                                       fill='x')
         ttk.Button(data_frame, text="Export Data to CSVs...", command=self.open_export_dialog).pack(pady=5, ipady=5,
                                                                                                     fill='x')
-
         danger_frame = ttk.LabelFrame(frame, text="Danger Zone", padding=10)
         danger_frame.pack(fill="x", pady=10)
         ttk.Button(danger_frame, text="Clear All Local Data", style="Accent.TButton", command=self.clear_all_data).pack(
@@ -675,7 +679,8 @@ class App(tk.Tk):
             if 'error' in result:
                 summary.append(f"Error importing {data_type.title()}: {result['error']}")
             else:
-                summary.append(f"Imported {data_type.title()}: {result['added']} added, {result['skipped']} skipped.")
+                summary.append(
+                    f"Imported {data_type.title()}: {result['added']} added, {result['skipped']} skipped (duplicates or blank rows).")
         self.refresh_all_views()
         self.data_manager.save_data()
         messagebox.showinfo("Import Complete", "\n".join(summary))
@@ -742,107 +747,148 @@ class App(tk.Tk):
 
 
 # --- Custom Dialogs ---
+# --- MODIFIED: Added required field indicators (*) ---
 class ManagementDialog(simpledialog.Dialog):
     def __init__(self, parent, title, fields, theme_colors, initial_data=None, readonly_key=None):
-        self.fields = fields;
-        self.theme_colors = theme_colors;
-        self.initial_data = initial_data or {};
-        self.readonly_key = readonly_key;
-        self.entries = {};
+        self.fields = fields
+        self.theme_colors = theme_colors
+        self.initial_data = initial_data or {}
+        self.readonly_key = readonly_key
+        self.entries = {}
         super().__init__(parent, title)
 
     def body(self, master):
         master.config(bg=self.theme_colors['dialog_bg'])
         for i, (key, label) in enumerate(self.fields):
-            lbl = ttk.Label(master, text=f"{label}:", background=self.theme_colors['dialog_bg'],
-                            foreground=self.theme_colors['contrast']);
-            lbl.grid(row=i, column=0, sticky="w", padx=5, pady=2)
-            entry = ttk.Entry(master, width=30);
-            entry.grid(row=i, column=1, sticky="ew", padx=5, pady=2);
-            entry.insert(0, self.initial_data.get(key, ""));
-            if key == self.readonly_key: entry.config(state="readonly")
+            # Create a frame for the label and asterisk
+            label_frame = ttk.Frame(master)
+            label_frame.grid(row=i, column=0, sticky="w", padx=5, pady=2)
+
+            lbl = ttk.Label(label_frame, text=f"{label}:", background=self.theme_colors['dialog_bg'],
+                            foreground=self.theme_colors['contrast'])
+            lbl.pack(side=tk.LEFT)
+
+            if key != self.readonly_key:
+                req_lbl = ttk.Label(label_frame, text="*", style="Required.TLabel")
+                req_lbl.pack(side=tk.LEFT)
+
+            entry = ttk.Entry(master, width=30)
+            entry.grid(row=i, column=1, sticky="ew", padx=5, pady=2)
+            entry.insert(0, self.initial_data.get(key, ""))
+            if key == self.readonly_key:
+                entry.config(state="readonly")
             self.entries[key] = entry
         return self.entries[self.fields[0][0]]
 
     def buttonbox(self):
-        box = ttk.Frame(self, style="TFrame");
-        box.pack()
+        box = ttk.Frame(self, style="TFrame")
+        box.pack(pady=10)
         ttk.Button(box, text="OK", width=10, command=self.ok, default=tk.ACTIVE).pack(side=tk.LEFT, padx=5, pady=5)
         ttk.Button(box, text="Cancel", width=10, command=self.cancel).pack(side=tk.LEFT, padx=5, pady=5)
-        self.bind("<Return>", self.ok);
+        self.bind("<Return>", self.ok)
         self.bind("<Escape>", self.cancel)
 
     def apply(self):
         self.result = {key: entry.get() for key, entry in self.entries.items()}
 
 
+# --- MODIFIED: Fixed validation error and added required indicators (*) ---
 class SectionDialog(simpledialog.Dialog):
     def __init__(self, parent, title, data_manager, theme_colors, initial_data=None):
-        self.data_manager = data_manager;
-        self.theme_colors = theme_colors;
-        self.initial_data = initial_data or {};
-        self.result = None;
+        self.data_manager = data_manager
+        self.theme_colors = theme_colors
+        self.initial_data = initial_data or {}
+        self.result = None
         super().__init__(parent, title)
+
+    def create_label_with_asterisk(self, parent, text, row, is_optional=False):
+        label_frame = ttk.Frame(parent)
+        label_frame.grid(row=row, column=0, sticky="w", padx=5, pady=2)
+
+        lbl = ttk.Label(label_frame, text=f"{text}:", background=self.theme_colors['dialog_bg'],
+                        foreground=self.theme_colors['contrast'])
+        lbl.pack(side=tk.LEFT)
+
+        if not is_optional:
+            req_lbl = ttk.Label(label_frame, text="*", style="Required.TLabel")
+            req_lbl.pack(side=tk.LEFT)
 
     def body(self, master):
         master.config(bg=self.theme_colors['dialog_bg'])
-        ttk.Label(master, text="Course:", background=self.theme_colors['dialog_bg'],
-                  foreground=self.theme_colors['contrast']).grid(row=0, column=0, sticky="w", padx=5, pady=2)
-        self.course_var = tk.StringVar();
+
+        self.create_label_with_asterisk(master, "Course", 0)
+        self.course_var = tk.StringVar()
         self.course_combo = ttk.Combobox(master, state="readonly", textvariable=self.course_var,
-                                         values=list(self.data_manager.courses.keys()));
-        self.course_combo.grid(row=0, column=1, sticky="ew", padx=5, pady=2);
+                                         values=list(self.data_manager.courses.keys()))
+        self.course_combo.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
         self.course_combo.set(self.initial_data.get('course_id_portion', ''))
-        ttk.Label(master, text="Term:", background=self.theme_colors['dialog_bg'],
-                  foreground=self.theme_colors['contrast']).grid(row=1, column=0, sticky="w", padx=5, pady=2)
-        self.term_var = tk.StringVar();
-        term_display = [f"{t.name} ({t.term_id})" for tname, t in self.data_manager.terms.items()];
-        self.term_combo = ttk.Combobox(master, state="readonly", textvariable=self.term_var, values=term_display);
+
+        self.create_label_with_asterisk(master, "Term", 1)
+        self.term_var = tk.StringVar()
+        term_display = [f"{t.name} ({t.term_id})" for tname, t in self.data_manager.terms.items()]
+        self.term_combo = ttk.Combobox(master, state="readonly", textvariable=self.term_var, values=term_display)
         self.term_combo.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
         if self.initial_data.get('term_name'):
             term = self.data_manager.terms.get(self.initial_data['term_name'])
             if term: self.term_combo.set(f"{term.name} ({term.term_id})")
-        ttk.Label(master, text="Account:", background=self.theme_colors['dialog_bg'],
-                  foreground=self.theme_colors['contrast']).grid(row=2, column=0, sticky="w", padx=5, pady=2)
-        self.account_var = tk.StringVar();
+
+        self.create_label_with_asterisk(master, "Account", 2)
+        self.account_var = tk.StringVar()
         self.account_combo = ttk.Combobox(master, state="readonly", textvariable=self.account_var,
-                                          values=list(self.data_manager.accounts.keys()));
-        self.account_combo.grid(row=2, column=1, sticky="ew", padx=5, pady=2);
+                                          values=list(self.data_manager.accounts.keys()))
+        self.account_combo.grid(row=2, column=1, sticky="ew", padx=5, pady=2)
         self.account_combo.set(self.initial_data.get('account_id', ''))
-        ttk.Label(master, text="Section Number:", background=self.theme_colors['dialog_bg'],
-                  foreground=self.theme_colors['contrast']).grid(row=3, column=0, sticky="w", padx=5, pady=2)
-        self.section_num_entry = ttk.Entry(master);
-        self.section_num_entry.grid(row=3, column=1, sticky="ew", padx=5, pady=2);
+
+        self.create_label_with_asterisk(master, "Section Number", 3)
+        self.section_num_entry = ttk.Entry(master)
+        self.section_num_entry.grid(row=3, column=1, sticky="ew", padx=5, pady=2)
         self.section_num_entry.insert(0, self.initial_data.get('section_number', ''))
-        ttk.Label(master, text="Status:", background=self.theme_colors['dialog_bg'],
-                  foreground=self.theme_colors['contrast']).grid(row=4, column=0, sticky="w", padx=5, pady=2)
-        self.status_var = tk.StringVar();
+
+        self.create_label_with_asterisk(master, "Status", 4)
+        self.status_var = tk.StringVar()
         self.status_combo = ttk.Combobox(master, state="readonly", textvariable=self.status_var,
-                                         values=['active', 'deleted', 'completed', 'published']);
-        self.status_combo.grid(row=4, column=1, sticky="ew", padx=5, pady=2);
+                                         values=['active', 'deleted', 'completed', 'published'])
+        self.status_combo.grid(row=4, column=1, sticky="ew", padx=5, pady=2)
         self.status_combo.set(self.initial_data.get('status', 'active'))
-        ttk.Label(master, text="Start Date (YYYY-MM-DD):", background=self.theme_colors['dialog_bg'],
-                  foreground=self.theme_colors['contrast']).grid(row=5, column=0, sticky="w", padx=5, pady=2)
-        self.start_date_entry = ttk.Entry(master);
-        self.start_date_entry.grid(row=5, column=1, sticky="ew", padx=5, pady=2);
+
+        self.create_label_with_asterisk(master, "Start Date (YYYY-MM-DD)", 5, is_optional=True)
+        self.start_date_entry = ttk.Entry(master)
+        self.start_date_entry.grid(row=5, column=1, sticky="ew", padx=5, pady=2)
         self.start_date_entry.insert(0, self.initial_data.get('start_date', ''))
-        ttk.Label(master, text="End Date (YYYY-MM-DD):", background=self.theme_colors['dialog_bg'],
-                  foreground=self.theme_colors['contrast']).grid(row=6, column=0, sticky="w", padx=5, pady=2)
-        self.end_date_entry = ttk.Entry(master);
-        self.end_date_entry.grid(row=6, column=1, sticky="ew", padx=5, pady=2);
+
+        self.create_label_with_asterisk(master, "End Date (YYYY-MM-DD)", 6, is_optional=True)
+        self.end_date_entry = ttk.Entry(master)
+        self.end_date_entry.grid(row=6, column=1, sticky="ew", padx=5, pady=2)
         self.end_date_entry.insert(0, self.initial_data.get('end_date', ''))
         return self.course_combo
 
     def buttonbox(self):
-        box = ttk.Frame(self, style="TFrame");
-        box.pack()
+        box = ttk.Frame(self, style="TFrame")
+        box.pack(pady=10)
         ttk.Button(box, text="OK", width=10, command=self.ok, default=tk.ACTIVE).pack(side=tk.LEFT, padx=5, pady=5)
         ttk.Button(box, text="Cancel", width=10, command=self.cancel).pack(side=tk.LEFT, padx=5, pady=5)
-        self.bind("<Return>", self.ok);
+        self.bind("<Return>", self.ok)
         self.bind("<Escape>", self.cancel)
 
+    def validate(self):
+        # The dictionary keys must be 'hashable' - widget objects are not, but their variable objects are.
+        # However, it's safer to check the widgets directly.
+        if not self.course_var.get():
+            messagebox.showwarning("Input Error", "Course is a required field.", parent=self)
+            return 0
+        if not self.term_var.get():
+            messagebox.showwarning("Input Error", "Term is a required field.", parent=self)
+            return 0
+        if not self.account_var.get():
+            messagebox.showwarning("Input Error", "Account is a required field.", parent=self)
+            return 0
+        if not self.section_num_entry.get():
+            messagebox.showwarning("Input Error", "Section Number is a required field.", parent=self)
+            return 0
+        return 1
+
     def apply(self):
-        term_str = self.term_var.get();
+        term_str = self.term_var.get()
         term_name = term_str.rsplit(' (', 1)[0] if ' (' in term_str else ''
         self.result = {'course_id_portion': self.course_var.get(), 'term_name': term_name,
                        'account_id': self.account_var.get(), 'section_number': self.section_num_entry.get(),
@@ -868,21 +914,37 @@ class EnrollmentDialog(simpledialog.Dialog):
         self.refresh_enrollments()
         add_frame = ttk.LabelFrame(master, text="Add New Enrollment", padding=10);
         add_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=10)
-        ttk.Label(add_frame, text="Person:", background=self.theme_colors['secondary'],
-                  foreground=self.theme_colors['contrast']).grid(row=0, column=0, sticky="w")
+
+        # Using a frame for label + asterisk
+        person_label_frame = ttk.Frame(add_frame)
+        person_label_frame.grid(row=0, column=0, sticky="w")
+        ttk.Label(person_label_frame, text="Person:", background=self.theme_colors['secondary'],
+                  foreground=self.theme_colors['contrast']).pack(side=tk.LEFT)
+        ttk.Label(person_label_frame, text="*", style="Required.TLabel").pack(side=tk.LEFT)
+
         self.person_var = tk.StringVar();
         person_values = [f"{p.name} ({uid})" for uid, p in self.data_manager.people.items()];
         self.person_combo = ttk.Combobox(add_frame, state="readonly", textvariable=self.person_var,
                                          values=person_values);
         self.person_combo.grid(row=0, column=1, sticky="ew")
-        ttk.Label(add_frame, text="Role:", background=self.theme_colors['secondary'],
-                  foreground=self.theme_colors['contrast']).grid(row=1, column=0, sticky="w")
+
+        role_label_frame = ttk.Frame(add_frame)
+        role_label_frame.grid(row=1, column=0, sticky="w")
+        ttk.Label(role_label_frame, text="Role:", background=self.theme_colors['secondary'],
+                  foreground=self.theme_colors['contrast']).pack(side=tk.LEFT)
+        ttk.Label(role_label_frame, text="*", style="Required.TLabel").pack(side=tk.LEFT)
+
         self.role_var = tk.StringVar();
         self.role_combo = ttk.Combobox(add_frame, state="readonly", textvariable=self.role_var,
                                        values=["Student", "Teaching Assistant", "Instructor", "Program Manager"]);
         self.role_combo.grid(row=1, column=1, sticky="ew")
-        ttk.Label(add_frame, text="Status:", background=self.theme_colors['secondary'],
-                  foreground=self.theme_colors['contrast']).grid(row=2, column=0, sticky="w")
+
+        status_label_frame = ttk.Frame(add_frame)
+        status_label_frame.grid(row=2, column=0, sticky="w")
+        ttk.Label(status_label_frame, text="Status:", background=self.theme_colors['secondary'],
+                  foreground=self.theme_colors['contrast']).pack(side=tk.LEFT)
+        ttk.Label(status_label_frame, text="*", style="Required.TLabel").pack(side=tk.LEFT)
+
         self.status_var = tk.StringVar();
         self.status_combo = ttk.Combobox(add_frame, state="readonly", textvariable=self.status_var,
                                          values=['active', 'completed', 'inactive', 'deleted']);
@@ -899,11 +961,12 @@ class EnrollmentDialog(simpledialog.Dialog):
 
     def add_enrollment(self):
         person_str = self.person_var.get()
-        if not person_str: messagebox.showwarning("Input Error", "Please select a person."); return
+        role = self.role_var.get()
+        if not person_str or not role:
+            messagebox.showwarning("Input Error", "Please select a person and a role.", parent=self)
+            return
         user_id = person_str[person_str.rfind('(') + 1:-1];
-        role = self.role_var.get();
         status = self.status_var.get()
-        if not user_id or not role: messagebox.showwarning("Input Error", "Please select a person and a role."); return
         enrollment = Enrollment(user_id, role, status);
         self.section.add_enrollment(enrollment);
         self.refresh_enrollments()
@@ -920,7 +983,7 @@ class EnrollmentDialog(simpledialog.Dialog):
 
     def buttonbox(self):
         box = ttk.Frame(self, style="TFrame");
-        box.pack()
+        box.pack(pady=10)
         ttk.Button(box, text="Close", width=10, command=self.ok, default=tk.ACTIVE).pack(side=tk.LEFT, padx=5, pady=5)
         self.bind("<Return>", self.ok);
         self.bind("<Escape>", self.cancel)
