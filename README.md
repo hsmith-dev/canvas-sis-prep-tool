@@ -8,7 +8,7 @@ A user-friendly desktop application designed to streamline the creation of CSV f
 
 ---
 
-![Screenshot of the Canvas SIS Prep Tool application](https://i.imgur.com/your-screenshot-url.png) 
+![Screenshot of the Canvas SIS Prep Tool application]([https://i.imgur.com/your-screenshot-url.png](https://github.com/hsmith-dev/canvas-sis-prep-tool/blob/main/app-image.png)) 
 
 ## 🎯 About The Project
 
