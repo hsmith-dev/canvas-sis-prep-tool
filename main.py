@@ -351,11 +351,11 @@ class App(tk.Tk):
         self.notebook.pack(pady=10, padx=10, expand=True, fill="both")
 
         self.create_sections_tab()
+        self.create_settings_tab()
         self.create_people_tab()
         self.create_courses_tab()
         self.create_terms_tab()
         self.create_accounts_tab()
-        self.create_settings_tab()
         self.create_about_tab()
 
         self.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -646,7 +646,7 @@ class App(tk.Tk):
 
     def create_settings_tab(self):
         frame = ttk.Frame(self.notebook, padding="20")
-        self.notebook.add(frame, text="Settings")
+        self.notebook.add(frame, text="Actions")
 
         canvas_frame = ttk.LabelFrame(frame, text="Canvas SIS Files", padding=10)
         canvas_frame.pack(fill="x", pady=(0, 10))
