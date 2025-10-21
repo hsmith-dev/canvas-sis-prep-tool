@@ -19,7 +19,7 @@ For educational administrators, instructional designers, and anyone responsible 
 * **Centralized Data Management:** Easily add, edit, and delete records for:
     * 👥 People (Students, Teachers, etc.)
     * 📚 Courses
-    * 🏢 Departments
+    * 🏢 Program Area
     * 🗓️ Terms
     * 📂 Accounts
 * **Effortless Section & Enrollment Creation:** A guided process to create course sections and enroll users with just a few clicks.
@@ -39,7 +39,7 @@ No installation is required! The application is a portable executable.
 
 The intended workflow is straightforward:
 
-1.  **Populate Core Data:** Start by adding your institutional data in the `People`, `Courses`, `Departments`, `Terms`, and `Accounts` tabs. You can also use the `Import` feature on the `Actions` tab.
+1.  **Populate Core Data:** Start by adding your institutional data in the `People`, `Courses`, `Program Area`, `Terms`, and `Accounts` tabs. You can also use the `Import` feature on the `Actions` tab.
 2.  **Create a Section:** Navigate to the `Sections & Enrollments` tab and click "Create Section". Use the dialog to link a Course, Term, and Account to create a unique course section.
 3.  **Add Enrollments:** With a section selected, click "Manage Enrollments" to add people (students, teachers) to that specific section with their designated roles.
 4.  **Generate CSVs:** Once your sections and enrollments are configured, go to the `Actions` tab, click "Generate Canvas CSV Files...", choose a save location, and the tool will export the formatted files for you.
