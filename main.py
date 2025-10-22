@@ -7,6 +7,7 @@ import webbrowser
 import sys
 import shutil
 import inspect
+from appdirs import user_data_dir
 
 
 # --- Helper function for finding assets ---
@@ -18,22 +19,18 @@ def resource_path(relative_path):
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
-
 # --- Function to get a writable application data directory ---
-def get_app_data_path(app_name):
-    """ Get a writable path for application data. """
-    if sys.platform == "win32":
-        path = os.path.join(os.environ['APPDATA'], app_name)
-    else:  # macOS and Linux
-        path = os.path.join(os.path.expanduser('~'), '.' + app_name)
+def get_app_data_path(app_name, app_author):
+    """ Get a writable, cross-platform path for application data. """
+    path = user_data_dir(app_name, app_author) # appdirs handles all OS logic
     if not os.path.exists(path):
         os.makedirs(path)
     return path
 
-
 # --- Data File ---
 APP_NAME = "CanvasSISPrepTool"
-DATA_DIR = get_app_data_path(APP_NAME)
+APP_AUTHOR = "Harrison Smith"
+DATA_DIR = get_app_data_path(APP_NAME, APP_AUTHOR)
 DATA_FILE = os.path.join(DATA_DIR, 'course_data.json')
 
 
@@ -1042,7 +1039,7 @@ class App(tk.Tk):
         ttk.Label(content_frame, text="AI Assistant:", font=('TkDefaultFont', 10, 'bold')).grid(row=2, column=0,
                                                                                                 sticky="ne", padx=5,
                                                                                                 pady=5)
-        ttk.Label(content_frame, text="Gemini 1.5 Pro").grid(row=2, column=1, sticky="nw", padx=5, pady=5)
+        ttk.Label(content_frame, text="Gemini").grid(row=2, column=1, sticky="nw", padx=5, pady=5)
         links_frame = ttk.Frame(content_frame);
         links_frame.grid(row=1, column=2, rowspan=2, sticky="nsw", padx=20)
         github_link = ttk.Label(links_frame, text="GitHub", style="link.TLabel", cursor="hand2");
