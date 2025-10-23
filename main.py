@@ -1,25 +1,36 @@
-import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog, filedialog
+#!/usr/bin/env python
+
+# --- Imports ---
+import sys
+import os
 import json
 import csv
-import os
-import webbrowser
-import sys
-import shutil
 import inspect
+import webbrowser
 from appdirs import user_data_dir
+from functools import partial
 
+# --- PyQt6 Imports ---
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QTabWidget, QWidget, QVBoxLayout, QHBoxLayout,
+    QPushButton, QTreeWidget, QTreeWidgetItem, QHeaderView, QGroupBox, QGridLayout,
+    QLabel, QLineEdit, QComboBox, QDialog, QDialogButtonBox, QMessageBox,
+    QFileDialog, QInputDialog, QCheckBox, QStackedWidget, QCompleter, QFormLayout
+)
+from PyQt6.QtGui import QIcon, QDesktopServices, QAction
+from PyQt6.QtCore import Qt, QUrl, QStringListModel
 
-# --- Helper function for finding assets ---
+# --- Helper function for finding assets (Unchanged) ---
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
     try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
-# --- Function to get a writable application data directory ---
+# --- Function to get a writable application data directory (Unchanged) ---
 def get_app_data_path(app_name, app_author):
     """ Get a writable, cross-platform path for application data. """
     path = user_data_dir(app_name, app_author) # appdirs handles all OS logic
@@ -27,14 +38,14 @@ def get_app_data_path(app_name, app_author):
         os.makedirs(path)
     return path
 
-# --- Data File ---
+# --- Data File (Unchanged) ---
 APP_NAME = "CanvasSISPrepTool"
 APP_AUTHOR = "Harrison Smith"
 DATA_DIR = get_app_data_path(APP_NAME, APP_AUTHOR)
 DATA_FILE = os.path.join(DATA_DIR, 'course_data.json')
 
 
-# --- Core Data Models ---
+# --- Core Data Models (Unchanged) ---
 class ProgramArea:
     def __init__(self, name):
         self.name = name
@@ -146,7 +157,7 @@ class Section:
         return section
 
 
-# --- DataManager ---
+# --- DataManager (Unchanged) ---
 class DataManager:
     def __init__(self):
         self.people = {}
@@ -393,86 +404,253 @@ class DataManager:
             return f"Error writing files: {e}"
 
 
-# --- Custom Autocomplete Combobox ---
-class AutocompleteCombobox(ttk.Combobox):
-    def __init__(self, master=None, **kwargs):
-        super().__init__(master, **kwargs)
-        # Use a different name for the full list to avoid confusion with the widget's 'values'
-        self._full_completion_list = []
-        self.set_completion_list(self.cget('values'))  # Initialize with any values passed at creation
-        self.bind('<KeyRelease>', self.handle_keyrelease)
-        self.bind('<<ComboboxSelected>>', self.handle_selection)
-        self.bind("<FocusOut>", self.handle_focusout)
+# --- Custom Autocomplete Combobox (PyQt6 Version) ---
+class AutocompleteCombobox(QComboBox):
+    """
+    A QComboBox that supports autocompletion and filtering as the user types.
+    """
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setEditable(True)
+        self.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
-    def set_completion_list(self, new_list):
+        self.completer = QCompleter(self)
+        self.completer.setCompletionMode(QCompleter.CompletionMode.PopupCompletion)
+        self.completer.setFilterMode(Qt.MatchFlag.MatchContains)
+        self.completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
+        self.setCompleter(self.completer)
+
+        self._model = QStringListModel()
+        self.completer.setModel(self._model)
+
+    def set_completion_list(self, items):
         """Public method to update the master list of options."""
-        self._full_completion_list = sorted(list(new_list))
-        # Initially, the displayed list is the full list
-        self['values'] = self._full_completion_list
-
-    def configure(self, cnf=None, **kw):
-        """Override configure to properly handle 'values' updates."""
-        if 'values' in kw:
-            # When 'values' is configured, update our master list
-            self.set_completion_list(kw['values'])
-            if self.get() not in self._full_completion_list:
-                self.set('')
-        super().configure(cnf, **kw)
-
-    def handle_keyrelease(self, event):
-        """Filter the list as the user types and show the dropdown."""
-        value = self.get()
-        if value == '':
-            self['values'] = self._full_completion_list
-        else:
-            filtered_values = [item for item in self._full_completion_list if value.lower() in item.lower()]
-            if filtered_values:
-                # Update the displayed list and pop open the dropdown
-                self['values'] = filtered_values
-                self.event_generate('<Down>')
-            else:
-                # If no matches, show the full list so they can see available options
-                self['values'] = self._full_completion_list
-        # This is needed to keep the dropdown open while typing
-        self.focus_set()
-        self.icursor(tk.END)
-
-    def handle_selection(self, event):
-        """Reset the full list in the dropdown after a user selects an item."""
-        self['values'] = self._full_completion_list
-
-    def handle_focusout(self, event):
-        """When the widget loses focus, reset the value list for the next interaction."""
-        self['values'] = self._full_completion_list
+        self._model.setStringList(items)
+        self.setModel(self._model) # Use the same model for the combobox itself
+        self.setCurrentIndex(-1) # Clear selection
 
     def is_valid(self):
         """Check if the current value is an exact match in the master completion list."""
-        return self.get() in self._full_completion_list
+        return self.currentText() in self._model.stringList()
+
+# --- GUI Themes ---
+LIGHT_THEME = """
+    QWidget {
+        background-color: #F2F2F2;
+        color: #222222;
+    }
+    QMainWindow, QDialog {
+        background-color: #F2F2F2;
+    }
+    QTabWidget::pane {
+        border: 1px solid #E0E0E0;
+        background-color: #FFFFFF;
+    }
+    QTabBar::tab {
+        background-color: #F2F2F2;
+        color: #222222;
+        padding: 10px 15px;
+        border: 1px solid #E0E0E0;
+        border-bottom: none;
+        margin-right: -1px;
+    }
+    QTabBar::tab:selected {
+        background-color: #FFFFFF;
+        color: #D94F4F;
+        border-bottom: 1px solid #FFFFFF;
+    }
+    QTabBar::tab:!selected:hover {
+        background-color: #E8E8E8;
+    }
+    QTreeWidget {
+        background-color: #FFFFFF;
+        color: #222222;
+        border: 1px solid #E0E0E0;
+        alternate-background-color: #F8F8F8;
+    }
+    QTreeWidget::item:selected {
+        background-color: #4D9FE0;
+        color: #FFFFFF;
+    }
+    QHeaderView::section {
+        background-color: #E0E0E0;
+        color: #222222;
+        padding: 5px;
+        border: 1px solid #D0D0D0;
+        font-weight: bold;
+    }
+    QPushButton {
+        background-color: #E1E1E1;
+        color: #222222;
+        border: 1px solid #C0C0C0;
+        padding: 5px 15px;
+        border-radius: 3px;
+    }
+    QPushButton:hover {
+        background-color: #4D9FE0;
+        color: #FFFFFF;
+    }
+    QPushButton:pressed {
+        background-color: #3C8ACF;
+    }
+    QPushButton[accent="true"] {
+        background-color: #D94F4F;
+        color: #FFFFFF;
+        font-weight: bold;
+    }
+    QPushButton[accent="true"]:hover {
+        background-color: #B84444;
+    }
+    QPushButton[accent="true"]:pressed {
+        background-color: #A33B3B;
+    }
+    QGroupBox {
+        font-weight: bold;
+        background-color: #F2F2F2;
+        border: 1px solid #E0E0E0;
+        border-radius: 3px;
+        margin-top: 10px;
+    }
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        subcontrol-position: top left;
+        padding: 0 5px 0 5px;
+        background-color: #F2F2F2;
+        color: #222222;
+    }
+    QLineEdit, QComboBox {
+        background-color: #FFFFFF;
+        border: 1px solid #C0C0C0;
+        padding: 3px;
+        border-radius: 3px;
+    }
+    QComboBox[readonly="true"] {
+        background-color: #E1E1E1;
+    }
+    QLabel[required="true"] {
+        color: red;
+        font-weight: bold;
+    }
+"""
+
+DARK_THEME = """
+    QWidget {
+        background-color: #212121;
+        color: #F5F5F5;
+    }
+    QMainWindow, QDialog {
+        background-color: #212121;
+    }
+    QTabWidget::pane {
+        border: 1px solid #383838;
+        background-color: #2C2C2C;
+    }
+    QTabBar::tab {
+        background-color: #212121;
+        color: #F5F5F5;
+        padding: 10px 15px;
+        border: 1px solid #383838;
+        border-bottom: none;
+        margin-right: -1px;
+    }
+    QTabBar::tab:selected {
+        background-color: #2C2C2C;
+        color: #D94F4F;
+        border-bottom: 1px solid #2C2C2C;
+    }
+    QTabBar::tab:!selected:hover {
+        background-color: #333333;
+    }
+    QTreeWidget {
+        background-color: #2C2C2C;
+        color: #F5F5F5;
+        border: 1px solid #383838;
+        alternate-background-color: #333333;
+    }
+    QTreeWidget::item:selected {
+        background-color: #4D9FE0;
+        color: #FFFFFF;
+    }
+    QHeaderView::section {
+        background-color: #383838;
+        color: #F5F5F5;
+        padding: 5px;
+        border: 1px solid #4A4A4A;
+        font-weight: bold;
+    }
+    QPushButton {
+        background-color: #4F4F4F;
+        color: #F5F5F5;
+        border: 1px solid #606060;
+        padding: 5px 15px;
+        border-radius: 3px;
+    }
+    QPushButton:hover {
+        background-color: #4D9FE0;
+        color: #FFFFFF;
+    }
+    QPushButton:pressed {
+        background-color: #3C8ACF;
+    }
+    QPushButton[accent="true"] {
+        background-color: #D94F4F;
+        color: #FFFFFF;
+        font-weight: bold;
+    }
+    QPushButton[accent="true"]:hover {
+        background-color: #B84444;
+    }
+    QPushButton[accent="true"]:pressed {
+        background-color: #A33B3B;
+    }
+    QGroupBox {
+        font-weight: bold;
+        background-color: #212121;
+        border: 1px solid #383838;
+        border-radius: 3px;
+        margin-top: 10px;
+    }
+    QGroupBox::title {
+        subcontrol-origin: margin;
+        subcontrol-position: top left;
+        padding: 0 5px 0 5px;
+        background-color: #212121;
+        color: #F5F5F5;
+    }
+    QLineEdit, QComboBox {
+        background-color: #3C3C3C;
+        color: #F5F5F5;
+        border: 1px solid #606060;
+        padding: 3px;
+        border-radius: 3px;
+    }
+    QComboBox[readonly="true"] {
+        background-color: #4F4F4F;
+    }
+    QLabel[required="true"] {
+        color: red;
+        font-weight: bold;
+    }
+"""
 
 
-# --- GUI Application ---
-class App(tk.Tk):
+# --- GUI Application (PyQt6 Version) ---
+class App(QMainWindow):
     def __init__(self, data_manager):
         super().__init__()
-        self.sections_tree = None
-        self.accounts_tree = None
-        self.terms_tree = None
-        self.program_areas_tree = None
-        self.courses_tree = None
-        self.people_tree = None
-        self.roles_management_frame = None
         self.data_manager = data_manager
-        self.title("Canvas SIS Prep Tool")
-        self.geometry("1350x750")
-        try:
-            icon = tk.PhotoImage(file=resource_path('app_icon.png'))
-            self.iconphoto(False, icon)
-        except tk.TclError:
-            print("app_icon.png not found, skipping icon.")
         self.current_theme = "light"
-        self.setup_styles()
-        self.notebook = ttk.Notebook(self)
-        self.notebook.pack(pady=10, padx=10, expand=True, fill="both")
+
+        self.setWindowTitle("Canvas SIS Prep Tool")
+        self.setGeometry(100, 100, 1350, 750)
+        try:
+            self.setWindowIcon(QIcon(resource_path('app_icon.png')))
+        except Exception:
+            print("app_icon.png not found, skipping icon.")
+
+        self.notebook = QTabWidget()
+        self.setCentralWidget(self.notebook)
 
         self.create_sections_tab()
         self.create_settings_tab()
@@ -482,78 +660,59 @@ class App(tk.Tk):
         self.create_terms_tab()
         self.create_accounts_tab()
         self.create_about_tab()
+        
+        self.setup_styles()
 
-        self.protocol("WM_DELETE_WINDOW", self.on_closing)
+    def closeEvent(self, event):
+        """Save data on window close."""
+        self.data_manager.save_data()
+        event.accept()
 
-    def get_theme_colors(self):
-        light_theme = {"accent": "#D94F4F", "secondary": "#F2F2F2", "contrast": "#222222", "highlight": "#4D9FE0",
-                       "surface": "#FFFFFF", "tree_heading": "#E0E0E0", "dialog_bg": "#F2F2F2", "button_bg": "#E1E1E1"}
-        dark_theme = {"accent": "#D94F4F", "secondary": "#212121", "contrast": "#F5F5F5", "highlight": "#4D9FE0",
-                      "surface": "#2C2C2C", "tree_heading": "#383838", "dialog_bg": "#333333", "button_bg": "#4F4F4F"}
-        return dark_theme if self.current_theme == "dark" else light_theme
+    def setup_styles(self):
+        """Applies the current theme stylesheet to the application."""
+        theme = DARK_THEME if self.current_theme == "dark" else LIGHT_THEME
+        self.setStyleSheet(theme)
 
     def toggle_theme(self):
+        """Switches the application theme between light and dark."""
         self.current_theme = "dark" if self.current_theme == "light" else "light"
         self.setup_styles()
 
-    def setup_styles(self):
-        colors = self.get_theme_colors()
-        style = ttk.Style(self)
-        style.theme_use("clam")
-        self.configure(background=colors["secondary"])
-        style.configure("Accent.TButton", background=colors["accent"], foreground="#FFFFFF",
-                        font=('TkDefaultFont', 10, 'bold'), borderwidth=1, relief="raised")
-        style.map("Accent.TButton", background=[('active', '#B84444')])
-        style.configure("TButton", background=colors["button_bg"], foreground=colors["contrast"], borderwidth=1,
-                        relief="raised")
-        style.map("TButton", background=[('active', colors["highlight"])])
-        style.configure("TNotebook", background=colors["secondary"], borderwidth=0)
-        style.configure("TNotebook.Tab", background=colors["secondary"], foreground=colors["contrast"],
-                        lightcolor=colors["secondary"], padding=[10, 5])
-        style.map("TNotebook.Tab", background=[("selected", colors["surface"])],
-                  foreground=[("selected", colors["accent"])])
-        style.configure("TFrame", background=colors["secondary"])
-        style.configure("TLabelFrame", background=colors["secondary"], borderwidth=1, relief="groove")
-        style.configure("TLabelFrame.Label", background=colors["secondary"], foreground=colors["contrast"],
-                        font=('TkDefaultFont', 10, 'bold'))
-        style.configure("TLabel", background=colors["secondary"], foreground=colors["contrast"])
-        style.configure("Required.TLabel", foreground="red", background=colors["secondary"])
-        style.configure("link.TLabel", foreground=colors["highlight"], background=colors["secondary"],
-                        font=('TkDefaultFont', 10, 'underline'))
-        style.configure("Treeview", background=colors["surface"], foreground=colors["contrast"],
-                        fieldbackground=colors["surface"], rowheight=25)
-        style.map("Treeview", background=[('selected', colors["highlight"])], foreground=[('selected', "#FFFFFF")])
-        style.configure("Treeview.Heading", background=colors["tree_heading"], foreground=colors["contrast"],
-                        font=('TkDefaultFont', 10, 'bold'))
-        style.map('TCombobox', fieldbackground=[('readonly', colors["surface"])],
-                  selectbackground=[('readonly', colors["highlight"])],
-                  selectforeground=[('readonly', colors["contrast"])], foreground=[('readonly', colors["contrast"])])
+    def create_management_tab(self, title, columns, item_name, add_slot, edit_slot, delete_slot):
+        """Helper to create a standard data management tab."""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        
+        # --- Tree Widget ---
+        tree = QTreeWidget()
+        tree.setColumnCount(len(columns))
+        tree.setHeaderLabels([col.replace('_', ' ').title() for col in columns])
+        tree.header().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        tree.setAlternatingRowColors(True)
+        tree.itemDoubleClicked.connect(edit_slot)
+        layout.addWidget(tree)
 
-    def on_closing(self):
-        self.data_manager.save_data()
-        self.destroy()
-
-    def create_management_tab(self, parent, title, columns, item_name, edit_command):
-        frame = ttk.Frame(parent, padding="10")
-        parent.add(frame, text=title)
-        tree_frame = ttk.Frame(frame)
-        tree_frame.pack(expand=True, fill="both")
-        tree = ttk.Treeview(tree_frame, columns=columns, show="headings")
-        for col in columns:
-            tree.heading(col, text=col.replace('_', ' ').title())
-            tree.column(col, width=120)
-        tree.pack(side="left", expand=True, fill="both")
-        tree.bind("<Double-1>", lambda event: edit_command(tree))
-        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=tree.yview)
-        scrollbar.pack(side="right", fill="y")
-        tree.configure(yscrollcommand=scrollbar.set)
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill="x", pady=5)
-        ttk.Button(btn_frame, text=f"Add {item_name}", command=lambda: self.add_item(item_name, tree)).pack(side="left",
-                                                                                                            padx=5)
-        ttk.Button(btn_frame, text=f"Edit {item_name}", command=lambda: edit_command(tree)).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text=f"Delete {item_name}", command=lambda: self.delete_item(item_name, tree)).pack(
-            side="left", padx=5)
+        # --- Button Bar ---
+        btn_widget = QWidget()
+        btn_layout = QHBoxLayout(btn_widget)
+        btn_layout.setContentsMargins(0, 5, 0, 0)
+        
+        add_btn = QPushButton(f"Add {item_name}")
+        add_btn.clicked.connect(add_slot)
+        
+        edit_btn = QPushButton(f"Edit {item_name}")
+        edit_btn.clicked.connect(edit_slot)
+        
+        delete_btn = QPushButton(f"Delete {item_name}")
+        delete_btn.clicked.connect(delete_slot)
+        
+        btn_layout.addWidget(add_btn)
+        btn_layout.addWidget(edit_btn)
+        btn_layout.addWidget(delete_btn)
+        btn_layout.addStretch()
+        
+        layout.addWidget(btn_widget)
+        self.notebook.addTab(tab, title)
         return tree
 
     def refresh_all_views(self):
@@ -564,124 +723,201 @@ class App(tk.Tk):
         self.refresh_accounts_list()
         self.refresh_sections_list()
 
+    # --- People Tab ---
     def create_people_tab(self):
-        self.people_tree = self.create_management_tab(self.notebook, "People", ('user_id', 'name', 'program_area_name'),
-                                                      "Person", lambda tree: self.edit_item("Person", tree))
+        self.people_tree = self.create_management_tab(
+            "People", ('user_id', 'name', 'program_area_name'), "Person",
+            self.add_person, self.edit_person, self.delete_person
+        )
         self.refresh_people_list()
 
     def refresh_people_list(self):
-        for item in self.people_tree.get_children(): self.people_tree.delete(item)
+        self.people_tree.clear()
         for user_id, person in sorted(self.data_manager.people.items()):
-            self.people_tree.insert("", "end", values=(user_id, person.name, person.program_area_name))
+            item = QTreeWidgetItem([str(user_id), person.name, person.program_area_name])
+            self.people_tree.addTopLevelItem(item)
 
+    def add_person(self): self.add_item("Person", self.people_tree)
+    def edit_person(self): self.edit_item("Person", self.people_tree)
+    def delete_person(self): self.delete_item("Person", self.people_tree)
+
+    # --- Courses Tab ---
     def create_courses_tab(self):
-        self.courses_tree = self.create_management_tab(self.notebook, "Courses",
-                                                       ('course_id_portion', 'short_name', 'long_name',
-                                                        'program_area_name'), "Course",
-                                                       lambda tree: self.edit_item("Course", tree))
+        self.courses_tree = self.create_management_tab(
+            "Courses", ('course_id_portion', 'short_name', 'long_name', 'program_area_name'), "Course",
+            self.add_course, self.edit_course, self.delete_course
+        )
         self.refresh_courses_list()
 
     def refresh_courses_list(self):
-        for item in self.courses_tree.get_children(): self.courses_tree.delete(item)
+        self.courses_tree.clear()
         for cid, course in sorted(self.data_manager.courses.items()):
-            self.courses_tree.insert("", "end",
-                                     values=(cid, course.short_name, course.long_name, course.program_area_name))
+            item = QTreeWidgetItem([cid, course.short_name, course.long_name, course.program_area_name])
+            self.courses_tree.addTopLevelItem(item)
 
+    def add_course(self): self.add_item("Course", self.courses_tree)
+    def edit_course(self): self.edit_item("Course", self.courses_tree)
+    def delete_course(self): self.delete_item("Course", self.courses_tree)
+
+    # --- Program Areas Tab ---
     def create_program_areas_tab(self):
-        self.program_areas_tree = self.create_management_tab(self.notebook, "Program Areas", ('name',), "Program Area",
-                                                             lambda tree: self.edit_item("Program Area", tree))
+        self.program_areas_tree = self.create_management_tab(
+            "Program Areas", ('name',), "Program Area",
+            self.add_program_area, self.edit_program_area, self.delete_program_area
+        )
         self.refresh_program_areas_list()
 
     def refresh_program_areas_list(self):
-        for item in self.program_areas_tree.get_children(): self.program_areas_tree.delete(item)
+        self.program_areas_tree.clear()
         for name, dept in sorted(self.data_manager.program_areas.items()):
-            self.program_areas_tree.insert("", "end", values=(name,))
+            item = QTreeWidgetItem([name])
+            self.program_areas_tree.addTopLevelItem(item)
 
+    def add_program_area(self): self.add_item("Program Area", self.program_areas_tree)
+    def edit_program_area(self): self.edit_item("Program Area", self.program_areas_tree)
+    def delete_program_area(self): self.delete_item("Program Area", self.program_areas_tree)
+
+    # --- Terms Tab ---
     def create_terms_tab(self):
-        self.terms_tree = self.create_management_tab(self.notebook, "Terms", ('name', 'term_id', 'short_code'), "Term",
-                                                     lambda tree: self.edit_item("Term", tree))
+        self.terms_tree = self.create_management_tab(
+            "Terms", ('name', 'term_id', 'short_code'), "Term",
+            self.add_term, self.edit_term, self.delete_term
+        )
         self.refresh_terms_list()
 
+    def refresh_terms_list(self):
+        self.terms_tree.clear()
+        for tname, term in sorted(self.data_manager.terms.items()):
+            item = QTreeWidgetItem([tname, str(term.term_id), term.short_code])
+            self.terms_tree.addTopLevelItem(item)
+
+    def add_term(self): self.add_item("Term", self.terms_tree)
+    def edit_term(self): self.edit_item("Term", self.terms_tree)
+    def delete_term(self): self.delete_item("Term", self.terms_tree)
+
+    # --- Accounts Tab ---
     def create_accounts_tab(self):
-        self.accounts_tree = self.create_management_tab(self.notebook, "Accounts", ('account_id',), "Account",
-                                                        lambda tree: self.edit_item("Account", tree))
+        self.accounts_tree = self.create_management_tab(
+            "Accounts", ('account_id',), "Account",
+            self.add_account, self.edit_account, self.delete_account
+        )
         self.refresh_accounts_list()
 
-    def refresh_terms_list(self):
-        for item in self.terms_tree.get_children(): self.terms_tree.delete(item)
-        for tname, term in sorted(self.data_manager.terms.items()):
-            self.terms_tree.insert("", "end", values=(tname, term.term_id, term.short_code))
-
     def refresh_accounts_list(self):
-        for item in self.accounts_tree.get_children(): self.accounts_tree.delete(item)
+        self.accounts_tree.clear()
         for aid, acc in sorted(self.data_manager.accounts.items()):
-            self.accounts_tree.insert("", "end", values=(aid,))
+            item = QTreeWidgetItem([str(aid)])
+            self.accounts_tree.addTopLevelItem(item)
+    
+    def add_account(self): self.add_item("Account", self.accounts_tree)
+    def edit_account(self): self.edit_item("Account", self.accounts_tree)
+    def delete_account(self): self.delete_item("Account", self.accounts_tree)
 
+    # --- Sections Tab ---
     def create_sections_tab(self):
-        frame = ttk.Frame(self.notebook, padding="10")
-        self.notebook.add(frame, text="Sections & Enrollments")
-        self.sections_tree = ttk.Treeview(frame,
-                                          columns=('course', 'term', 'section', 'status', 'start_date', 'end_date'),
-                                          show="headings")
-        self.sections_tree.heading('course', text='Course');
-        self.sections_tree.heading('term', text='Term');
-        self.sections_tree.heading('section', text='Section #');
-        self.sections_tree.heading('status', text='Status');
-        self.sections_tree.heading('start_date', text='Start Date');
-        self.sections_tree.heading('end_date', text='End Date')
-        self.sections_tree.pack(expand=True, fill="both")
-        self.sections_tree.bind("<Double-1>", lambda event: self.edit_section())
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill="x", pady=5)
-        ttk.Button(btn_frame, text="Create Section", command=self.create_section).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Edit Section", command=self.edit_section).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Manage Enrollments", command=self.manage_enrollments).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Delete Section", command=self.delete_section).pack(side="left", padx=5)
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        
+        self.sections_tree = QTreeWidget()
+        columns = ('course', 'term', 'section', 'status', 'start_date', 'end_date')
+        self.sections_tree.setColumnCount(len(columns))
+        self.sections_tree.setHeaderLabels([c.replace('_', ' ').title() for c in columns])
+        self.sections_tree.header().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.sections_tree.setAlternatingRowColors(True)
+        self.sections_tree.itemDoubleClicked.connect(self.edit_section)
+        layout.addWidget(self.sections_tree)
+
+        btn_widget = QWidget()
+        btn_layout = QHBoxLayout(btn_widget)
+        btn_layout.setContentsMargins(0, 5, 0, 0)
+        
+        create_btn = QPushButton("Create Section")
+        create_btn.clicked.connect(self.create_section)
+        edit_btn = QPushButton("Edit Section")
+        edit_btn.clicked.connect(self.edit_section)
+        manage_btn = QPushButton("Manage Enrollments")
+        manage_btn.clicked.connect(self.manage_enrollments)
+        delete_btn = QPushButton("Delete Section")
+        delete_btn.clicked.connect(self.delete_section)
+        
+        btn_layout.addWidget(create_btn)
+        btn_layout.addWidget(edit_btn)
+        btn_layout.addWidget(manage_btn)
+        btn_layout.addWidget(delete_btn)
+        btn_layout.addStretch()
+        
+        layout.addWidget(btn_widget)
+        self.notebook.addTab(tab, "Sections")
         self.refresh_sections_list()
 
     def refresh_sections_list(self):
-        for item in self.sections_tree.get_children(): self.sections_tree.delete(item)
+        self.sections_tree.clear()
         for i, sec in enumerate(self.data_manager.sections):
             course = self.data_manager.courses.get(sec.course_id_portion)
             course_name = course.short_name if course else 'N/A'
             term_obj = self.data_manager.terms.get(sec.term_name)
             term_display = f"{term_obj.name} ({term_obj.term_id})" if term_obj else 'N/A'
-            self.sections_tree.insert("", "end", iid=i,
-                                      values=(f"{course_name} ({sec.course_id_portion})", term_display,
-                                              sec.section_number, sec.status, sec.start_date, sec.end_date))
+            
+            values = [
+                f"{course_name} ({sec.course_id_portion})",
+                term_display,
+                str(sec.section_number),
+                sec.status,
+                sec.start_date,
+                sec.end_date
+            ]
+            item = QTreeWidgetItem(values)
+            # Store the list index in the item
+            item.setData(0, Qt.ItemDataRole.UserRole, i)
+            self.sections_tree.addTopLevelItem(item)
+
+    def _get_selected_section_index(self):
+        """Helper to get the index of the selected section from the tree."""
+        selected = self.sections_tree.selectedItems()
+        if not selected:
+            return None
+        return selected[0].data(0, Qt.ItemDataRole.UserRole)
 
     def create_section(self):
-        dialog = SectionDialog(self, "Create Section", self.data_manager, self.get_theme_colors())
-        if dialog.result:
-            new_section = Section(**dialog.result)
+        dialog = SectionDialog(self, "Create Section", self.data_manager)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            data = dialog.get_data()
+            new_section = Section(**data)
             self.data_manager.sections.append(new_section)
             self.refresh_sections_list()
             self.data_manager.save_data()
-            section_index = len(self.data_manager.sections) - 1
-            self.sections_tree.selection_set(str(section_index))
+            
+            # Select the new section and open enrollment dialog
+            new_index = len(self.data_manager.sections) - 1
+            for i in range(self.sections_tree.topLevelItemCount()):
+                item = self.sections_tree.topLevelItem(i)
+                if item.data(0, Qt.ItemDataRole.UserRole) == new_index:
+                    self.sections_tree.setCurrentItem(item)
+                    break
             self.manage_enrollments()
 
-    def edit_section(self, event=None):
-        selected = self.sections_tree.selection()
-        if not selected:
-            if event: return
-            messagebox.showwarning("Selection Error", "Please select a section to edit.");
+    def edit_section(self):
+        section_index = self._get_selected_section_index()
+        if section_index is None:
+            QMessageBox.warning(self, "Selection Error", "Please select a section to edit.")
             return
-        section_index = int(selected[0]);
+            
         section_obj = self.data_manager.sections[section_index]
-        dialog = SectionDialog(self, "Edit Section", self.data_manager, self.get_theme_colors(),
-                               initial_data=section_obj.to_dict())
-        if dialog.result:
-            for key, value in dialog.result.items(): setattr(section_obj, key, value)
+        dialog = SectionDialog(self, "Edit Section", self.data_manager, initial_data=section_obj.to_dict())
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            data = dialog.get_data()
+            for key, value in data.items():
+                setattr(section_obj, key, value)
             self.refresh_sections_list()
             self.data_manager.save_data()
 
     def manage_enrollments(self):
-        selected = self.sections_tree.selection()
-        if not selected:
-            messagebox.showwarning("Selection Error", "Please select a section to manage.", parent=self)
+        section_index = self._get_selected_section_index()
+        if section_index is None:
+            QMessageBox.warning(self, "Selection Error", "Please select a section to manage.")
             return
-        section_index = int(selected[0])
+            
         section = self.data_manager.sections[section_index]
         term_obj = self.data_manager.terms.get(section.term_name)
         if term_obj:
@@ -689,27 +925,31 @@ class App(tk.Tk):
             title = f"Enrollments for {full_section_id}"
         else:
             title = f"Enrollments for {section.course_id_portion}"
-
-        EnrollmentDialog(self, title, section, self.data_manager, self.get_theme_colors())
+            
+        # This dialog modifies the section object directly
+        dialog = EnrollmentDialog(self, title, section, self.data_manager)
+        dialog.exec()
+        # Data is saved inside the dialog's add/delete methods
 
     def delete_section(self):
-        selected = self.sections_tree.selection()
-        if not selected: messagebox.showwarning("Selection Error", "Please select a section to delete."); return
-        if messagebox.askyesno("Confirm Delete",
-                               "Are you sure you want to delete this section and all its enrollments?"):
-            indices_to_delete = sorted([int(s) for s in selected], reverse=True)
-            for index in indices_to_delete: del self.data_manager.sections[index]
+        selected_items = self.sections_tree.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(self, "Selection Error", "Please select a section to delete.")
+            return
+
+        reply = QMessageBox.question(self, "Confirm Delete",
+                                     "Are you sure you want to delete this section and all its enrollments?",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            # Get indices from items and sort in reverse order
+            indices_to_delete = sorted([item.data(0, Qt.ItemDataRole.UserRole) for item in selected_items], reverse=True)
+            for index in indices_to_delete:
+                del self.data_manager.sections[index]
             self.refresh_sections_list()
             self.data_manager.save_data()
 
-    def generate_csv(self):
-        prefix = simpledialog.askstring("File Prefix", "Enter an optional prefix for the CSV files:", parent=self);
-        if prefix is None: return
-        directory = filedialog.askdirectory(title="Select Folder to Save CSV Files");
-        if not directory: return
-        result = self.data_manager.generate_csv_files(directory, prefix);
-        messagebox.showinfo("CSV Generation", result)
-
+    # --- Generic Item Management ---
     def add_item(self, item_name, tree):
         fields_map = {
             "Person": [('user_id', 'User ID'), ('name', 'Name'), ('program_area_name', 'Program Area')],
@@ -728,26 +968,27 @@ class App(tk.Tk):
             program_areas = [""] + sorted(list(self.data_manager.program_areas.keys()))
             combobox_fields = {'program_area_name': program_areas}
 
-        dialog = ManagementDialog(self, f"Add {item_name}", fields_map[item_name], theme_colors=self.get_theme_colors(),
-                                  combobox_fields=combobox_fields)
-        if not dialog.result: return
+        dialog = ManagementDialog(self, f"Add {item_name}", fields_map[item_name], combobox_fields=combobox_fields)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
 
-        for key, value in dialog.result.items():
+        data = dialog.get_data()
+        for key, value in data.items():
             if not value and key != 'program_area_name':
-                messagebox.showerror("Input Error", f"{key.replace('_', ' ').title()} cannot be empty.", parent=self)
+                QMessageBox.critical(self, "Input Error", f"{key.replace('_', ' ').title()} cannot be empty.")
                 return
 
-        key = dialog.result[key_field]
+        key = data[key_field]
         data_map = {"Person": self.data_manager.people, "Course": self.data_manager.courses,
                     "Term": self.data_manager.terms, "Account": self.data_manager.accounts,
                     "Program Area": self.data_manager.program_areas}
         if key in data_map[item_name]:
-            messagebox.showerror("Error", f"A {item_name.lower()} with this ID/Name already exists.", parent=self)
+            QMessageBox.critical(self, "Error", f"A {item_name.lower()} with this ID/Name already exists.")
             return
 
         constructors = {"Person": Person, "Course": Course, "Term": Term, "Account": Account,
                         "Program Area": ProgramArea}
-        data_map[item_name][key] = constructors[item_name](**dialog.result)
+        data_map[item_name][key] = constructors[item_name](**data)
 
         refresh_map = {"Person": self.refresh_people_list, "Course": self.refresh_courses_list,
                        "Term": self.refresh_terms_list, "Account": self.refresh_accounts_list,
@@ -756,9 +997,10 @@ class App(tk.Tk):
         self.data_manager.save_data()
 
     def edit_item(self, item_name, tree):
-        selected = tree.selection()
-        if not selected: messagebox.showwarning("Selection Error",
-                                                f"Please select a {item_name.lower()} to edit."); return
+        selected = tree.selectedItems()
+        if not selected:
+            QMessageBox.warning(self, "Selection Error", f"Please select a {item_name.lower()} to edit.")
+            return
 
         fields_map = {
             "Person": [('user_id', 'User ID'), ('name', 'Name'), ('program_area_name', 'Program Area')],
@@ -773,8 +1015,8 @@ class App(tk.Tk):
         key_field = key_field_map.get(item_name)
         key_index = [f[0] for f in fields_map[item_name]].index(key_field)
 
-        # BUG FIX: Ensure the key is a string, as tkinter might convert numeric strings to integers
-        key = str(tree.item(selected[0])['values'][key_index])
+        # .text() always returns a string, so no bug fix needed
+        key = selected[0].text(key_index)
 
         combobox_fields = None
         if item_name in ["Person", "Course"]:
@@ -787,19 +1029,20 @@ class App(tk.Tk):
         item_obj = data_map[item_name][key]
 
         dialog = ManagementDialog(self, f"Edit {item_name}", fields_map[item_name], initial_data=item_obj.to_dict(),
-                                  readonly_key=key_field, theme_colors=self.get_theme_colors(),
-                                  combobox_fields=combobox_fields)
-        if not dialog.result: return
+                                  readonly_key=key_field, combobox_fields=combobox_fields)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
 
-        for k, value in dialog.result.items():
+        data = dialog.get_data()
+        for k, value in data.items():
             if k != key_field and not value and k != 'program_area_name':
-                messagebox.showerror("Input Error", f"{k.replace('_', ' ').title()} cannot be empty.", parent=self)
+                QMessageBox.critical(self, "Input Error", f"{k.replace('_', ' ').title()} cannot be empty.")
                 return
 
-        new_key = dialog.result[key_field]
+        new_key = data[key_field]
         if new_key != key:  # Key has changed
             if new_key in data_map[item_name]:
-                messagebox.showerror("Error", f"A {item_name.lower()} with this ID/Name already exists.");
+                QMessageBox.critical(self, "Error", f"A {item_name.lower()} with this ID/Name already exists.")
                 return
             # Update references if needed
             if item_name == "Term":
@@ -814,7 +1057,7 @@ class App(tk.Tk):
 
         constructors = {"Person": Person, "Course": Course, "Term": Term, "Account": Account,
                         "Program Area": ProgramArea}
-        data_map[item_name][new_key] = constructors[item_name](**dialog.result)
+        data_map[item_name][new_key] = constructors[item_name](**data)
 
         refresh_map = {"Person": self.refresh_people_list, "Course": self.refresh_courses_list,
                        "Term": self.refresh_terms_list, "Account": self.refresh_accounts_list,
@@ -829,34 +1072,47 @@ class App(tk.Tk):
         self.data_manager.save_data()
 
     def delete_item(self, item_name, tree):
-        selected = tree.selection()
-        if not selected: messagebox.showwarning("Selection Error",
-                                                f"Please select a {item_name.lower()} to delete."); return
+        selected = tree.selectedItems()
+        if not selected:
+            QMessageBox.warning(self, "Selection Error", f"Please select a {item_name.lower()} to delete.")
+            return
 
         fields_map = {"Person": [('user_id',)], "Course": [('course_id_portion',)], "Term": [('name',)],
                       "Account": [('account_id',)], "Program Area": [('name',)]}
         key_field = fields_map[item_name][0][0]
-        key_index = tree['columns'].index(key_field)
+        
+        # Get column index from header label
+        key_index = -1
+        for i in range(tree.columnCount()):
+            if tree.headerItem().text(i).lower() == key_field.replace('_', ' ').lower():
+                key_index = i
+                break
+        
+        if key_index == -1: # Fallback just in case
+            key_index = 0 
 
-        # BUG FIX: Ensure the key is a string, as tkinter might convert numeric strings to integers
-        key = str(tree.item(selected[0])['values'][key_index])
+        key = selected[0].text(key_index)
 
         in_use_msg = f"Cannot delete this {item_name.lower()}. It is in use."
         if item_name == "Person" and any(e.user_id == key for s in self.data_manager.sections for e in s.enrollments):
-            messagebox.showerror("Deletion Error", in_use_msg);
+            QMessageBox.critical(self, "Deletion Error", in_use_msg)
             return
         if item_name == "Program Area":
             if any(p.program_area_name == key for p in self.data_manager.people.values()) or any(
                     c.program_area_name == key for c in self.data_manager.courses.values()):
-                messagebox.showerror("Deletion Error", in_use_msg);
+                QMessageBox.critical(self, "Deletion Error", in_use_msg)
                 return
         if item_name in ["Course", "Term", "Account"]:
             check_key = {"Course": "course_id_portion", "Term": "term_name", "Account": "account_id"}[item_name]
             if any(getattr(s, check_key, None) == key for s in self.data_manager.sections):
-                messagebox.showerror("Deletion Error", in_use_msg);
+                QMessageBox.critical(self, "Deletion Error", in_use_msg)
                 return
 
-        if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete this {item_name.lower()}?"):
+        reply = QMessageBox.question(self, "Confirm Delete",
+                                     f"Are you sure you want to delete this {item_name.lower()}?",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        if reply == QMessageBox.StandardButton.Yes:
             data_map = {"Person": self.data_manager.people, "Course": self.data_manager.courses,
                         "Term": self.data_manager.terms, "Account": self.data_manager.accounts,
                         "Program Area": self.data_manager.program_areas}
@@ -868,640 +1124,712 @@ class App(tk.Tk):
             refresh_map[item_name]()
             self.data_manager.save_data()
 
+    # --- Actions / Settings Tab ---
     def create_settings_tab(self):
-        actions_tab_frame = ttk.Frame(self.notebook, padding="20")
-        self.notebook.add(actions_tab_frame, text="Actions")
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        # Use QStackedWidget to switch between main view and roles view
+        self.action_stack = QStackedWidget()
+        layout.addWidget(self.action_stack)
 
         # --- Main Actions View ---
-        self.main_actions_frame = ttk.Frame(actions_tab_frame)
-        self.main_actions_frame.pack(fill='both', expand=True)
+        self.main_actions_frame = QWidget()
+        main_layout = QVBoxLayout(self.main_actions_frame)
+        main_layout.setContentsMargins(0,0,0,0)
 
-        canvas_frame = ttk.LabelFrame(self.main_actions_frame, text="Canvas SIS Files", padding=10)
-        canvas_frame.pack(fill="x", pady=(0, 10))
-        ttk.Button(canvas_frame, text="Generate Canvas CSV Files...", style="Accent.TButton",
-                   command=self.generate_csv).pack(pady=10, ipady=5, fill='x')
+        canvas_frame = QGroupBox("Canvas SIS Files")
+        canvas_layout = QVBoxLayout(canvas_frame)
+        gen_csv_btn = QPushButton("Generate Canvas CSV Files...")
+        gen_csv_btn.setProperty("accent", True)
+        gen_csv_btn.clicked.connect(self.generate_csv)
+        canvas_layout.addWidget(gen_csv_btn)
+        main_layout.addWidget(canvas_frame)
 
-        data_frame = ttk.LabelFrame(self.main_actions_frame, text="Application Data", padding=10)
-        data_frame.pack(fill="x", pady=10)
-        ttk.Button(data_frame, text="Import Data from CSVs...", command=self.open_import_dialog).pack(pady=5, ipady=5,
-                                                                                                      fill='x')
-        ttk.Button(data_frame, text="Export Data to CSVs...", command=self.open_export_dialog).pack(pady=5, ipady=5,
-                                                                                                    fill='x')
+        data_frame = QGroupBox("Application Data")
+        data_layout = QVBoxLayout(data_frame)
+        import_btn = QPushButton("Import Data from CSVs...")
+        import_btn.clicked.connect(self.open_import_dialog)
+        export_btn = QPushButton("Export Data to CSVs...")
+        export_btn.clicked.connect(self.open_export_dialog)
+        data_layout.addWidget(import_btn)
+        data_layout.addWidget(export_btn)
+        main_layout.addWidget(data_frame)
 
-        danger_frame = ttk.LabelFrame(self.main_actions_frame, text="Danger Zone", padding=10)
-        danger_frame.pack(fill="x", pady=10)
-        ttk.Button(danger_frame, text="Manage Enrollment Roles", command=self.show_roles_management_view).pack(
-            pady=10, ipady=5, fill='x')
-        ttk.Button(danger_frame, text="Clear All Local Data", style="Accent.TButton", command=self.clear_all_data).pack(
-            pady=10, ipady=5, fill='x')
+        danger_frame = QGroupBox("Danger Zone")
+        danger_layout = QVBoxLayout(danger_frame)
+        roles_btn = QPushButton("Manage Enrollment Roles")
+        roles_btn.clicked.connect(self.show_roles_management_view)
+        clear_btn = QPushButton("Clear All Local Data")
+        clear_btn.setProperty("accent", True)
+        clear_btn.clicked.connect(self.clear_all_data)
+        danger_layout.addWidget(roles_btn)
+        danger_layout.addWidget(clear_btn)
+        main_layout.addWidget(danger_frame)
+        
+        main_layout.addStretch()
+        self.action_stack.addWidget(self.main_actions_frame)
 
-        # --- Roles Management View (initially hidden) ---
-        self.roles_management_frame = ttk.Frame(actions_tab_frame)
+        # --- Roles Management View ---
+        self.roles_management_frame = QWidget()
         self.setup_roles_management_view()
+        self.action_stack.addWidget(self.roles_management_frame)
 
+        self.notebook.addTab(tab, "Actions")
+        
     def setup_roles_management_view(self):
-        # This frame is a child of the main actions tab frame
-        frame = self.roles_management_frame
+        layout = QVBoxLayout(self.roles_management_frame)
+        back_btn = QPushButton("< Back to Actions")
+        back_btn.clicked.connect(self.show_main_actions_view)
+        layout.addWidget(back_btn, alignment=Qt.AlignmentFlag.AlignLeft)
 
-        ttk.Button(frame, text="< Back to Actions", command=self.show_main_actions_view).pack(anchor="w", pady=(0, 10))
+        tree_frame = QGroupBox("Enrollment Roles")
+        tree_layout = QVBoxLayout(tree_frame)
+        
+        self.roles_tree = QTreeWidget()
+        self.roles_tree.setColumnCount(2)
+        self.roles_tree.setHeaderLabels(['Display Name', 'Canvas Role Value'])
+        self.roles_tree.header().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        tree_layout.addWidget(self.roles_tree)
+        layout.addWidget(tree_frame)
 
-        tree_frame = ttk.LabelFrame(frame, text="Enrollment Roles")
-        tree_frame.pack(fill="both", expand=True)
+        btn_widget = QWidget()
+        btn_layout = QHBoxLayout(btn_widget)
+        btn_layout.setContentsMargins(0, 5, 0, 0)
+        
+        add_btn = QPushButton("Add Role")
+        add_btn.clicked.connect(self.add_role)
+        edit_btn = QPushButton("Edit Role")
+        edit_btn.clicked.connect(self.edit_role)
+        delete_btn = QPushButton("Delete Role")
+        delete_btn.clicked.connect(self.delete_role)
+        import_btn = QPushButton("Import from CSV")
+        import_btn.clicked.connect(self.import_roles)
 
-        self.roles_tree = ttk.Treeview(tree_frame, columns=('display', 'canvas_role'), show="headings")
-        self.roles_tree.heading('display', text='Display Name')
-        self.roles_tree.heading('canvas_role', text='Canvas Role Value')
-        self.roles_tree.pack(side="left", fill="both", expand=True, padx=5, pady=5)
-
-        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.roles_tree.yview)
-        scrollbar.pack(side="right", fill="y", pady=5, padx=(0, 5))
-        self.roles_tree.configure(yscrollcommand=scrollbar.set)
-
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill="x", pady=10)
-
-        ttk.Button(btn_frame, text="Add Role", command=self.add_role).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Edit Role", command=self.edit_role).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Delete Role", command=self.delete_role).pack(side="left", padx=5)
-        ttk.Button(btn_frame, text="Import from CSV", command=self.import_roles).pack(side="right", padx=5)
+        btn_layout.addWidget(add_btn)
+        btn_layout.addWidget(edit_btn)
+        btn_layout.addWidget(delete_btn)
+        btn_layout.addStretch()
+        btn_layout.addWidget(import_btn)
+        layout.addWidget(btn_widget)
 
     def show_roles_management_view(self):
-        self.main_actions_frame.pack_forget()
         self.refresh_roles_list()
-        self.roles_management_frame.pack(fill='both', expand=True, padx=10, pady=10)
+        self.action_stack.setCurrentWidget(self.roles_management_frame)
 
     def show_main_actions_view(self):
-        self.roles_management_frame.pack_forget()
-        self.main_actions_frame.pack(fill='both', expand=True)
+        self.action_stack.setCurrentWidget(self.main_actions_frame)
 
     def refresh_roles_list(self):
-        for item in self.roles_tree.get_children():
-            self.roles_tree.delete(item)
+        self.roles_tree.clear()
         for display, canvas_role in sorted(self.data_manager.enrollment_roles.items()):
-            self.roles_tree.insert("", "end", iid=display, values=(display, canvas_role))
+            item = QTreeWidgetItem([display, canvas_role])
+            self.roles_tree.addTopLevelItem(item)
 
     def add_role(self):
-        dialog = RoleEditDialog(self, "Add New Role", self.get_theme_colors(), is_new=True)
-        if dialog.result:
-            display_name = dialog.result['display_name']
-            canvas_role = dialog.result['canvas_role']
+        dialog = RoleEditDialog(self, "Add New Role", is_new=True)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            data = dialog.get_data()
+            display_name = data['display_name']
+            canvas_role = data['canvas_role']
             if not display_name or not canvas_role:
-                messagebox.showerror("Error", "Both fields are required.", parent=self)
+                QMessageBox.critical(self, "Error", "Both fields are required.")
                 return
             if display_name in self.data_manager.enrollment_roles:
-                messagebox.showerror("Error", "A role with this display name already exists.", parent=self)
+                QMessageBox.critical(self, "Error", "A role with this display name already exists.")
                 return
             self.data_manager.enrollment_roles[display_name] = canvas_role
             self.data_manager.save_data()
             self.refresh_roles_list()
 
     def edit_role(self):
-        selected = self.roles_tree.selection()
+        selected = self.roles_tree.selectedItems()
         if not selected:
-            messagebox.showwarning("Selection Error", "Please select a role to edit.", parent=self)
+            QMessageBox.warning(self, "Selection Error", "Please select a role to edit.")
             return
-        display_name = selected[0]
+            
+        display_name = selected[0].text(0)
         canvas_role = self.data_manager.enrollment_roles[display_name]
 
-        dialog = RoleEditDialog(self, "Edit Role", self.get_theme_colors(),
-                                initial_data={'display_name': display_name, 'canvas_role': canvas_role})
-        if dialog.result:
-            self.data_manager.enrollment_roles[display_name] = dialog.result['canvas_role']
+        dialog = RoleEditDialog(self, "Edit Role", initial_data={'display_name': display_name, 'canvas_role': canvas_role})
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            self.data_manager.enrollment_roles[display_name] = dialog.get_data()['canvas_role']
             self.data_manager.save_data()
             self.refresh_roles_list()
 
     def delete_role(self):
-        selected = self.roles_tree.selection()
+        selected = self.roles_tree.selectedItems()
         if not selected:
-            messagebox.showwarning("Selection Error", "Please select a role to delete.", parent=self)
+            QMessageBox.warning(self, "Selection Error", "Please select a role to delete.")
             return
-        display_name = selected[0]
-        if messagebox.askyesno("Confirm Delete", f"Are you sure you want to delete the role '{display_name}'?"):
+            
+        display_name = selected[0].text(0)
+        reply = QMessageBox.question(self, "Confirm Delete",
+                                     f"Are you sure you want to delete the role '{display_name}'?",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        if reply == QMessageBox.StandardButton.Yes:
             del self.data_manager.enrollment_roles[display_name]
             self.data_manager.save_data()
             self.refresh_roles_list()
 
     def import_roles(self):
-        path = filedialog.askopenfilename(title="Select Roles CSV File", filetypes=[("CSV Files", "*.csv")],
-                                          parent=self)
+        path, _ = QFileDialog.getOpenFileName(self, "Select Roles CSV File", "", "CSV Files (*.csv)")
         if not path:
             return
+            
         result = self.data_manager.import_roles_from_csv(path)
         if 'error' in result:
-            messagebox.showerror("Import Error", result['error'], parent=self)
+            QMessageBox.critical(self, "Import Error", result['error'])
         else:
-            messagebox.showinfo("Import Complete", f"Added: {result['added']}\nUpdated: {result['updated']}",
-                                parent=self)
+            QMessageBox.information(self, "Import Complete", f"Added: {result['added']}\nUpdated: {result['updated']}")
             self.refresh_roles_list()
 
+    def generate_csv(self):
+        prefix, ok = QInputDialog.getText(self, "File Prefix", "Enter an optional prefix for the CSV files:")
+        if not ok:
+            return
+            
+        directory = QFileDialog.getExistingDirectory(self, "Select Folder to Save CSV Files")
+        if not directory:
+            return
+            
+        result = self.data_manager.generate_csv_files(directory, prefix)
+        QMessageBox.information(self, "CSV Generation", result)
+
     def open_import_dialog(self):
-        dialog = ImportDialog(self, "Import from CSV Files", theme_colors=self.get_theme_colors())
-        if not dialog.result: return
-        summary = []
-        for data_type, file_path in dialog.result.items():
-            result = self.data_manager.import_from_csv_file(file_path, data_type)
-            if 'error' in result:
-                summary.append(f"Error importing {data_type.title()}: {result['error']}")
-            else:
-                summary.append(
-                    f"Imported {data_type.title()}: {result['added']} added, {result['skipped']} skipped (duplicates or blank rows).")
-        self.refresh_all_views()
-        self.data_manager.save_data()
-        messagebox.showinfo("Import Complete", "\n".join(summary))
+        dialog = ImportDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            summary = []
+            file_paths = dialog.get_data()
+            for data_type, file_path in file_paths.items():
+                result = self.data_manager.import_from_csv_file(file_path, data_type)
+                if 'error' in result:
+                    summary.append(f"Error importing {data_type.title()}: {result['error']}")
+                else:
+                    summary.append(
+                        f"Imported {data_type.title()}: {result['added']} added, {result['skipped']} skipped (duplicates or blank rows).")
+            self.refresh_all_views()
+            self.data_manager.save_data()
+            QMessageBox.information(self, "Import Complete", "\n".join(summary))
 
     def open_export_dialog(self):
-        dialog = ExportDialog(self, "Export to CSV Files", theme_colors=self.get_theme_colors())
-        if dialog.result:
-            data_types, directory = dialog.result['types'], dialog.result['directory']
-            result = self.data_manager.export_data_to_csvs(data_types, directory)
-            messagebox.showinfo("Export Complete", result)
+        dialog = ExportDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            result = dialog.get_data()
+            data_types, directory = result['types'], result['directory']
+            result_msg = self.data_manager.export_data_to_csvs(data_types, directory)
+            QMessageBox.information(self, "Export Complete", result_msg)
 
     def clear_all_data(self):
-        if messagebox.askyesno("Confirm Clear",
-                               "Are you sure you want to delete ALL local data? This action is irreversible."):
+        reply = QMessageBox.question(self, "Confirm Clear",
+                                     "Are you sure you want to delete ALL local data? This action is irreversible.",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        
+        if reply == QMessageBox.StandardButton.Yes:
             if self.data_manager.clear_all():
                 self.refresh_all_views()
-                messagebox.showinfo("Success", "All local data has been cleared.")
+                QMessageBox.information(self, "Success", "All local data has been cleared.")
             else:
-                messagebox.showerror("Error", "Could not clear all data. Check file permissions.")
+                QMessageBox.critical(self, "Error", "Could not clear all data. Check file permissions.")
 
+    # --- About Tab ---
     def create_about_tab(self):
-        frame = ttk.Frame(self.notebook, padding="20");
-        self.notebook.add(frame, text="About")
-        content_frame = ttk.Frame(frame);
-        content_frame.pack(anchor="center", expand=True)
-        ttk.Label(content_frame, text="App Name:", font=('TkDefaultFont', 10, 'bold')).grid(row=0, column=0,
-                                                                                            sticky="ne", padx=5, pady=5)
-        ttk.Label(content_frame, text="Canvas SIS Prep Tool").grid(row=0, column=1, sticky="nw", padx=5, pady=5)
-        ttk.Label(content_frame, text="Author:", font=('TkDefaultFont', 10, 'bold')).grid(row=1, column=0, sticky="ne",
-                                                                                          padx=5, pady=5)
-        ttk.Label(content_frame, text="Harrison Smith").grid(row=1, column=1, sticky="nw", padx=5, pady=5)
-        ttk.Label(content_frame, text="AI Assistant:", font=('TkDefaultFont', 10, 'bold')).grid(row=2, column=0,
-                                                                                                sticky="ne", padx=5,
-                                                                                                pady=5)
-        ttk.Label(content_frame, text="Gemini").grid(row=2, column=1, sticky="nw", padx=5, pady=5)
-        links_frame = ttk.Frame(content_frame);
-        links_frame.grid(row=1, column=2, rowspan=2, sticky="nsw", padx=20)
-        github_link = ttk.Label(links_frame, text="GitHub", style="link.TLabel", cursor="hand2");
-        github_link.pack(side="left", padx=5);
-        github_link.bind("<Button-1>", lambda e: self.open_link("https://github.com/hsmith-dev"))
-        linkedin_link = ttk.Label(links_frame, text="LinkedIn", style="link.TLabel", cursor="hand2");
-        linkedin_link.pack(side="left", padx=5);
-        linkedin_link.bind("<Button-1>", lambda e: self.open_link("https://linkedin.com/in/hsmith-dev"))
-        email_link = ttk.Label(links_frame, text="Email", style="link.TLabel", cursor="hand2");
-        email_link.pack(side="left", padx=5);
-        email_link.bind("<Button-1>", lambda e: self.open_link("mailto:harrison@hsmith.dev"))
-        ttk.Label(content_frame, text="Last Update Date:", font=('TkDefaultFont', 10, 'bold')).grid(row=3, column=0,
-                                                                                                    sticky="ne", padx=5,
-                                                                                                    pady=5)
-        ttk.Label(content_frame, text="October 21, 2025").grid(row=3, column=1, sticky="nw", padx=5, pady=5)
-        ttk.Label(content_frame, text="Description:", font=('TkDefaultFont', 10, 'bold')).grid(row=4, column=0,
-                                                                                               sticky="ne", padx=5,
-                                                                                               pady=5)
+        tab = QWidget()
+        
+        # Center the content
+        main_layout = QHBoxLayout(tab)
+        main_layout.addStretch()
+        
+        content_widget = QWidget()
+        layout = QFormLayout(content_widget)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(10)
+        
+        layout.addRow(QLabel("<b>App Name:</b>"), QLabel("Canvas SIS Prep Tool"))
+        layout.addRow(QLabel("<b>Author:</b>"), QLabel("Harrison Smith"))
+        layout.addRow(QLabel("<b>AI Assistant:</b>"), QLabel("Gemini"))
+        layout.addRow(QLabel("<b>Last Update Date:</b>"), QLabel("October 23, 2025"))
+        
+        # Links
+        links_widget = QWidget()
+        links_layout = QHBoxLayout(links_widget)
+        links_layout.setContentsMargins(0,0,0,0)
+        github_link = QLabel('<a href="https://github.com/hsmith-dev">GitHub</a>')
+        github_link.setOpenExternalLinks(True)
+        linkedin_link = QLabel('<a href="https://linkedin.com/in/hsmith-dev">LinkedIn</a>')
+        linkedin_link.setOpenExternalLinks(True)
+        email_link = QLabel('<a href="mailto:harrison@hsmith.dev">Email</a>')
+        email_link.setOpenExternalLinks(True)
+        links_layout.addWidget(github_link)
+        links_layout.addWidget(linkedin_link)
+        links_layout.addWidget(email_link)
+        links_layout.addStretch()
+        layout.addRow(QLabel("<b>Links:</b>"), links_widget)
+
         description_text = "A desktop application designed to streamline the creation of CSV files for Canvas SIS imports currently focused at streamlining the course shell creations."
-        ttk.Label(content_frame, text=description_text, wraplength=500, justify="left").grid(row=4, column=1,
-                                                                                             columnspan=2, sticky="nw",
-                                                                                             padx=5, pady=5)
-        ttk.Button(content_frame, text="Toggle Theme", command=self.toggle_theme).grid(row=5, column=0, columnspan=3,
-                                                                                       pady=20)
+        desc_label = QLabel(description_text)
+        desc_label.setWordWrap(True)
+        layout.addRow(QLabel("<b>Description:</b>"), desc_label)
+        
+        theme_btn = QPushButton("Toggle Theme")
+        theme_btn.clicked.connect(self.toggle_theme)
+        layout.addRow(theme_btn)
+        
+        main_layout.addWidget(content_widget)
+        main_layout.addStretch()
+        
+        self.notebook.addTab(tab, "About")
 
-    def open_link(self, url):
-        webbrowser.open_new(url)
+
+# --- Custom Dialogs (PyQt6 Version) ---
+
+class BaseDialog(QDialog):
+    """Base dialog for consistent button box and validation."""
+    def __init__(self, parent, title):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        
+        self.main_layout = QVBoxLayout(self)
+        self.form_widget = QWidget()
+        self.form_layout = QFormLayout(self.form_widget)
+        self.main_layout.addWidget(self.form_widget)
+
+        self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+        self.main_layout.addWidget(self.button_box)
+        
+        self.widgets = {}
+
+    def add_field(self, key, label_text, widget, is_required=False):
+        """Adds a field to the form layout."""
+        if is_required:
+            label = QLabel(f'{label_text}: <span style="color:red;">*</span>')
+        else:
+            label = QLabel(f"{label_text}:")
+            
+        self.form_layout.addRow(label, widget)
+        self.widgets[key] = widget
+
+    def accept(self):
+        """Overridden to provide validation."""
+        if self.validate_form():
+            super().accept()
+        else:
+            # Validation method should show its own error
+            pass
+
+    def validate_form(self):
+        """Placeholder for validation logic. Returns True if valid."""
+        return True
+
+    def get_data(self):
+        """Placeholder for data retrieval. Returns a dict."""
+        return {key: w.currentText() if isinstance(w, QComboBox) else w.text() for key, w in self.widgets.items()}
 
 
-# --- Custom Dialogs ---
-class ManagementDialog(simpledialog.Dialog):
-    def __init__(self, parent, title, fields, theme_colors, initial_data=None, readonly_key=None, combobox_fields=None):
-        self.result = None
+class ManagementDialog(BaseDialog):
+    def __init__(self, parent, title, fields, initial_data=None, readonly_key=None, combobox_fields=None):
+        super().__init__(parent, title)
         self.fields = fields
-        self.theme_colors = theme_colors
         self.initial_data = initial_data or {}
         self.readonly_key = readonly_key
         self.combobox_fields = combobox_fields or {}
-        self.widgets = {}
-        super().__init__(parent, title)
+        
+        self._create_body()
 
-    def body(self, master):
-        master.config(bg=self.theme_colors['dialog_bg'])
-        for i, (key, label) in enumerate(self.fields):
-            label_frame = ttk.Frame(master)
-            label_frame.grid(row=i, column=0, sticky="w", padx=5, pady=2)
-            lbl = ttk.Label(label_frame, text=f"{label}:", background=self.theme_colors['dialog_bg'],
-                            foreground=self.theme_colors['contrast'])
-            lbl.pack(side=tk.LEFT)
-            if key != self.readonly_key and 'program_area_name' not in key:
-                req_lbl = ttk.Label(label_frame, text="*", style="Required.TLabel")
-                req_lbl.pack(side=tk.LEFT)
-
+    def _create_body(self):
+        for key, label in self.fields:
+            initial_value = self.initial_data.get(key, "")
+            is_required = (key != self.readonly_key and key != 'program_area_name')
+            
             if key in self.combobox_fields:
-                widget = AutocompleteCombobox(master, values=self.combobox_fields[key])
-                widget.set(self.initial_data.get(key, ""))
+                widget = AutocompleteCombobox()
+                widget.set_completion_list(self.combobox_fields[key])
+                widget.setCurrentText(initial_value)
             else:
-                widget = ttk.Entry(master, width=30)
-                widget.insert(0, self.initial_data.get(key, ""))
-
-            widget.grid(row=i, column=1, sticky="ew", padx=5, pady=2)
+                widget = QLineEdit()
+                widget.setText(initial_value)
+                
             if key == self.readonly_key:
-                widget.config(state="readonly")
-            self.widgets[key] = widget
-        return self.widgets[self.fields[0][0]]
+                widget.setReadOnly(True)
+                
+            self.add_field(key, label, widget, is_required=is_required)
 
-    def buttonbox(self):
-        box = ttk.Frame(self, style="TFrame");
-        box.pack(pady=10)
-        ttk.Button(box, text="OK", width=10, command=self.ok, default=tk.ACTIVE).pack(side=tk.LEFT, padx=5, pady=5)
-        ttk.Button(box, text="Cancel", width=10, command=self.cancel).pack(side=tk.LEFT, padx=5, pady=5)
-        self.bind("<Return>", self.ok);
-        self.bind("<Escape>", self.cancel)
-
-    def validate(self):
-        # Check if any comboboxes have invalid entries
+    def validate_form(self):
         for key, widget in self.widgets.items():
             if isinstance(widget, AutocompleteCombobox):
-                # An empty value is fine, but if it's not empty, it must be a valid selection.
-                if widget.get() and not widget.is_valid():
-                    messagebox.showwarning("Input Error",
-                                           f"Please select a valid {key.replace('_', ' ')} from the list.",
-                                           parent=self)
-                    return 0
-        return 1
+                if widget.currentText() and not widget.is_valid():
+                    QMessageBox.warning(self, "Input Error",
+                                        f"Please select a valid {key.replace('_', ' ')} from the list.")
+                    return False
+        return True
 
-    def apply(self):
-        self.result = {key: widget.get() for key, widget in self.widgets.items()}
+    def get_data(self):
+        return {key: widget.currentText() if isinstance(widget, QComboBox) else widget.text() 
+                for key, widget in self.widgets.items()}
 
 
-class SectionDialog(simpledialog.Dialog):
-    def __init__(self, parent, title, data_manager, theme_colors, initial_data=None):
-        self.start_date_entry = None
-        self.status_combo = None
-        self.section_num_entry = None
-        self.account_combo = None
-        self.term_combo = None
-        self.course_combo = None
-        self.pa_combo = None
-        self.end_date_entry = None
+class SectionDialog(BaseDialog):
+    def __init__(self, parent, title, data_manager, initial_data=None):
         self.data_manager = data_manager
-        self.theme_colors = theme_colors
         self.initial_data = initial_data or {}
-        self.result = None
         super().__init__(parent, title)
+        self._create_body()
+        self.update_course_options() # Initial population
+        
+        # Load initial data
+        if self.initial_data.get('course_id_portion'):
+            course = self.data_manager.courses.get(self.initial_data['course_id_portion'])
+            if course: 
+                self.widgets['course'].setCurrentText(f"{course.short_name} ({self.initial_data['course_id_portion']})")
+        if self.initial_data.get('term_name'):
+            term = self.data_manager.terms.get(self.initial_data['term_name'])
+            if term: 
+                self.widgets['term'].setCurrentText(f"{term.name} ({term.term_id})")
+        if self.initial_data.get('account_id'):
+            self.widgets['account'].setCurrentText(self.initial_data['account_id'])
+        if self.initial_data.get('section_number'):
+            self.widgets['section_number'].setText(self.initial_data['section_number'])
+        if self.initial_data.get('status'):
+            self.widgets['status'].setCurrentText(self.initial_data['status'])
+        if self.initial_data.get('start_date'):
+            self.widgets['start_date'].setText(self.initial_data['start_date'])
+        if self.initial_data.get('end_date'):
+            self.widgets['end_date'].setText(self.initial_data['end_date'])
 
-    def create_label_with_asterisk(self, parent, text, row, is_optional=False):
-        label_frame = ttk.Frame(parent)
-        label_frame.grid(row=row, column=0, sticky="w", padx=5, pady=2)
-        lbl = ttk.Label(label_frame, text=f"{text}:", background=self.theme_colors['dialog_bg'],
-                        foreground=self.theme_colors['contrast'])
-        lbl.pack(side=tk.LEFT)
-        if not is_optional:
-            req_lbl = ttk.Label(label_frame, text="*", style="Required.TLabel")
-            req_lbl.pack(side=tk.LEFT)
+    def _create_body(self):
+        pa_values = ["All Program Areas"] + sorted(list(self.data_manager.program_areas.keys()))
+        pa_combo = QComboBox()
+        pa_combo.addItems(pa_values)
+        pa_combo.currentTextChanged.connect(self.update_course_options)
+        self.add_field('pa_filter', "Filter by Program Area", pa_combo)
 
-    def update_course_options(self, event=None):
-        selected_pa = self.pa_combo.get()
+        course_combo = AutocompleteCombobox()
+        self.add_field('course', "Course", course_combo, is_required=True)
+
+        term_display = [f"{t.name} ({t.term_id})" for tname, t in self.data_manager.terms.items()]
+        term_combo = AutocompleteCombobox()
+        term_combo.set_completion_list(term_display)
+        self.add_field('term', "Term", term_combo, is_required=True)
+
+        account_combo = AutocompleteCombobox()
+        account_combo.set_completion_list(list(self.data_manager.accounts.keys()))
+        self.add_field('account', "Account", account_combo, is_required=True)
+
+        self.add_field('section_number', "Section Number", QLineEdit(), is_required=True)
+        
+        status_combo = QComboBox()
+        status_combo.addItems(['active', 'deleted', 'completed', 'published'])
+        self.add_field('status', "Status", status_combo, is_required=True)
+        
+        self.add_field('start_date', "Start Date (YYYY-MM-DD)", QLineEdit())
+        self.add_field('end_date', "End Date (YYYY-MM-DD)", QLineEdit())
+
+    def update_course_options(self, selected_pa="All Program Areas"):
+        selected_pa = self.widgets['pa_filter'].currentText()
         course_options = []
         for cid, course in sorted(self.data_manager.courses.items(), key=lambda item: item[1].short_name):
             if selected_pa == "All Program Areas" or course.program_area_name == selected_pa:
                 course_options.append(f"{course.short_name} ({cid})")
-        self.course_combo.configure(values=course_options)
-        self.course_combo.set('')
+        
+        current_selection = self.widgets['course'].currentText()
+        self.widgets['course'].set_completion_list(course_options)
+        
+        # Try to preserve selection if it's still in the list
+        if current_selection in course_options:
+            self.widgets['course'].setCurrentText(current_selection)
 
-    def body(self, master):
-        master.config(bg=self.theme_colors['dialog_bg'])
+    def validate_form(self):
+        if not self.widgets['course'].currentText() or not self.widgets['course'].is_valid():
+            QMessageBox.warning(self, "Input Error", "A valid course must be selected from the list.")
+            return False
+        if not self.widgets['term'].currentText() or not self.widgets['term'].is_valid():
+            QMessageBox.warning(self, "Input Error", "A valid term must be selected from the list.")
+            return False
+        if not self.widgets['account'].currentText() or not self.widgets['account'].is_valid():
+            QMessageBox.warning(self, "Input Error", "A valid account must be selected from the list.")
+            return False
+        if not self.widgets['section_number'].text():
+            QMessageBox.warning(self, "Input Error", "Section Number is a required field.")
+            return False
+        return True
 
-        ttk.Label(master, text="Filter by Program Area:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
-        pa_values = ["All Program Areas"] + sorted(list(self.data_manager.program_areas.keys()))
-        self.pa_combo = ttk.Combobox(master, state="readonly", values=pa_values)
-        self.pa_combo.set("All Program Areas")
-        self.pa_combo.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
-        self.pa_combo.bind("<<ComboboxSelected>>", self.update_course_options)
-
-        self.create_label_with_asterisk(master, "Course", 1)
-        self.course_combo = AutocompleteCombobox(master)
-        self.course_combo.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
-        self.update_course_options()
-        if self.initial_data.get('course_id_portion'):
-            course = self.data_manager.courses.get(self.initial_data['course_id_portion'])
-            if course: self.course_combo.set(f"{course.short_name} ({self.initial_data['course_id_portion']})")
-
-        self.create_label_with_asterisk(master, "Term", 2)
-        term_display = [f"{t.name} ({t.term_id})" for tname, t in self.data_manager.terms.items()]
-        self.term_combo = AutocompleteCombobox(master, values=term_display)
-        self.term_combo.grid(row=2, column=1, sticky="ew", padx=5, pady=2)
-        if self.initial_data.get('term_name'):
-            term = self.data_manager.terms.get(self.initial_data['term_name'])
-            if term: self.term_combo.set(f"{term.name} ({term.term_id})")
-
-        self.create_label_with_asterisk(master, "Account", 3)
-        self.account_combo = AutocompleteCombobox(master, values=list(self.data_manager.accounts.keys()))
-        self.account_combo.grid(row=3, column=1, sticky="ew", padx=5, pady=2)
-        self.account_combo.set(self.initial_data.get('account_id', ''))
-
-        self.create_label_with_asterisk(master, "Section Number", 4)
-        self.section_num_entry = ttk.Entry(master)
-        self.section_num_entry.grid(row=4, column=1, sticky="ew", padx=5, pady=2)
-        self.section_num_entry.insert(0, self.initial_data.get('section_number', ''))
-
-        self.create_label_with_asterisk(master, "Status", 5)
-        self.status_combo = ttk.Combobox(master, state="readonly",
-                                         values=['active', 'deleted', 'completed', 'published'])
-        self.status_combo.grid(row=5, column=1, sticky="ew", padx=5, pady=2)
-        self.status_combo.set(self.initial_data.get('status', 'active'))
-
-        self.create_label_with_asterisk(master, "Start Date (YYYY-MM-DD)", 6, is_optional=True)
-        self.start_date_entry = ttk.Entry(master)
-        self.start_date_entry.grid(row=6, column=1, sticky="ew", padx=5, pady=2)
-        self.start_date_entry.insert(0, self.initial_data.get('start_date', ''))
-
-        self.create_label_with_asterisk(master, "End Date (YYYY-MM-DD)", 7, is_optional=True)
-        self.end_date_entry = ttk.Entry(master)
-        self.end_date_entry.grid(row=7, column=1, sticky="ew", padx=5, pady=2)
-        self.end_date_entry.insert(0, self.initial_data.get('end_date', ''))
-        return self.pa_combo
-
-    def buttonbox(self):
-        box = ttk.Frame(self, style="TFrame");
-        box.pack(pady=10)
-        ttk.Button(box, text="OK", width=10, command=self.ok, default=tk.ACTIVE).pack(side=tk.LEFT, padx=5, pady=5)
-        ttk.Button(box, text="Cancel", width=10, command=self.cancel).pack(side=tk.LEFT, padx=5, pady=5)
-        self.bind("<Return>", self.ok);
-        self.bind("<Escape>", self.cancel)
-
-    def validate(self):
-        if not self.course_combo.get() or not self.course_combo.is_valid():
-            messagebox.showwarning("Input Error", "A valid course must be selected from the list.", parent=self)
-            return 0
-        if not self.term_combo.get() or not self.term_combo.is_valid():
-            messagebox.showwarning("Input Error", "A valid term must be selected from the list.", parent=self)
-            return 0
-        if not self.account_combo.get() or not self.account_combo.is_valid():
-            messagebox.showwarning("Input Error", "A valid account must be selected from the list.", parent=self)
-            return 0
-        if not self.section_num_entry.get():
-            messagebox.showwarning("Input Error", "Section Number is a required field.", parent=self)
-            return 0
-        return 1
-
-    def apply(self):
-        course_str = self.course_combo.get()
+    def get_data(self):
+        course_str = self.widgets['course'].currentText()
         course_id = course_str[course_str.rfind('(') + 1:-1] if '(' in course_str else ''
-        term_str = self.term_combo.get()
+        
+        term_str = self.widgets['term'].currentText()
         term_name = term_str.rsplit(' (', 1)[0] if ' (' in term_str else ''
-        self.result = {'course_id_portion': course_id, 'term_name': term_name, 'account_id': self.account_combo.get(),
-                       'section_number': self.section_num_entry.get(), 'status': self.status_combo.get(),
-                       'start_date': self.start_date_entry.get(), 'end_date': self.end_date_entry.get()}
+        
+        return {
+            'course_id_portion': course_id,
+            'term_name': term_name,
+            'account_id': self.widgets['account'].currentText(),
+            'section_number': self.widgets['section_number'].text(),
+            'status': self.widgets['status'].currentText(),
+            'start_date': self.widgets['start_date'].text(),
+            'end_date': self.widgets['end_date'].text()
+        }
 
 
-class EnrollmentDialog(simpledialog.Dialog):
-    def __init__(self, parent, title, section, data_manager, theme_colors):
-        self.person_combo = None
-        self.role_combo = None
-        self.pa_combo = None
-        self.tree = None
-        self.status_combo = None
-        self.section = section;
-        self.data_manager = data_manager;
-        self.theme_colors = theme_colors;
-        super().__init__(parent, title)
+class EnrollmentDialog(QDialog):
+    def __init__(self, parent, title, section, data_manager):
+        super().__init__(parent)
+        self.section = section
+        self.data_manager = data_manager
+        
+        self.setWindowTitle(title)
+        self.setMinimumSize(600, 400)
 
-    def body(self, master):
-        master.config(bg=self.theme_colors['dialog_bg'])
-        self.tree = ttk.Treeview(master, columns=('user_id', 'name', 'role', 'status'), show="headings");
-        self.tree.heading('user_id', text='User ID');
-        self.tree.heading('name', text='Name');
-        self.tree.heading('role', text='Role');
-        self.tree.heading('status', text='Status');
-        self.tree.grid(row=0, column=0, columnspan=2, sticky="nsew", pady=(0, 10));
+        layout = QVBoxLayout(self)
+
+        # --- Enrollment List ---
+        self.tree = QTreeWidget()
+        self.tree.setColumnCount(4)
+        self.tree.setHeaderLabels(['User ID', 'Name', 'Role', 'Status'])
+        self.tree.header().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        layout.addWidget(self.tree)
+        
+        # --- Add Enrollment Form ---
+        add_frame = QGroupBox("Add New Enrollment")
+        form_layout = QFormLayout(add_frame)
+
+        pa_values = ["All Program Areas"] + sorted(list(self.data_manager.program_areas.keys()))
+        self.pa_combo = QComboBox()
+        self.pa_combo.addItems(pa_values)
+        self.pa_combo.currentTextChanged.connect(self.update_person_options)
+        form_layout.addRow("Filter by Program Area:", self.pa_combo)
+
+        self.person_combo = AutocompleteCombobox()
+        form_layout.addRow(QLabel('Person: <span style="color:red;">*</span>'), self.person_combo)
+        
+        self.role_combo = QComboBox()
+        self.role_combo.addItems(sorted(list(self.data_manager.enrollment_roles.keys())))
+        form_layout.addRow(QLabel('Role: <span style="color:red;">*</span>'), self.role_combo)
+        
+        self.status_combo = QComboBox()
+        self.status_combo.addItems(['active', 'completed', 'inactive', 'deleted'])
+        form_layout.addRow(QLabel('Status: <span style="color:red;">*</span>'), self.status_combo)
+        
+        add_btn = QPushButton("Add")
+        add_btn.clicked.connect(self.add_enrollment)
+        form_layout.addRow(add_btn)
+        
+        layout.addWidget(add_frame)
+        
+        # --- Bottom Buttons ---
+        bottom_layout = QHBoxLayout()
+        delete_btn = QPushButton("Delete Selected")
+        delete_btn.clicked.connect(self.delete_enrollment)
+        bottom_layout.addWidget(delete_btn)
+        bottom_layout.addStretch()
+        
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        bottom_layout.addWidget(close_btn)
+        
+        layout.addLayout(bottom_layout)
+        
+        # --- Initial Load ---
+        self.update_person_options()
         self.refresh_enrollments()
 
-        add_frame = ttk.LabelFrame(master, text="Add New Enrollment", padding=10);
-        add_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=10)
-        add_frame.columnconfigure(1, weight=1)
-
-        ttk.Label(add_frame, text="Filter by Program Area:").grid(row=0, column=0, sticky="w", padx=5)
-        pa_values = ["All Program Areas"] + sorted(list(self.data_manager.program_areas.keys()))
-        self.pa_combo = ttk.Combobox(add_frame, state="readonly", values=pa_values)
-        self.pa_combo.set("All Program Areas")
-        self.pa_combo.grid(row=0, column=1, sticky="ew", padx=5, pady=2)
-        self.pa_combo.bind("<<ComboboxSelected>>", self.update_person_options)
-
-        person_label_frame = ttk.Frame(add_frame);
-        person_label_frame.grid(row=1, column=0, sticky="w", padx=5)
-        ttk.Label(person_label_frame, text="Person:").pack(side=tk.LEFT)
-        ttk.Label(person_label_frame, text="*", style="Required.TLabel").pack(side=tk.LEFT)
-
-        self.person_combo = AutocompleteCombobox(add_frame)
-        self.person_combo.grid(row=1, column=1, sticky="ew", padx=5, pady=2)
-        self.update_person_options()
-
-        role_label_frame = ttk.Frame(add_frame);
-        role_label_frame.grid(row=2, column=0, sticky="w", padx=5)
-        ttk.Label(role_label_frame, text="Role:").pack(side=tk.LEFT)
-        ttk.Label(role_label_frame, text="*", style="Required.TLabel").pack(side=tk.LEFT)
-
-        self.role_combo = ttk.Combobox(add_frame, state="readonly",
-                                       values=sorted(list(self.data_manager.enrollment_roles.keys())))
-        self.role_combo.grid(row=2, column=1, sticky="ew", padx=5, pady=2)
-
-        status_label_frame = ttk.Frame(add_frame);
-        status_label_frame.grid(row=3, column=0, sticky="w", padx=5)
-        ttk.Label(status_label_frame, text="Status:").pack(side=tk.LEFT)
-        ttk.Label(status_label_frame, text="*", style="Required.TLabel").pack(side=tk.LEFT)
-
-        self.status_combo = ttk.Combobox(add_frame, state="readonly",
-                                         values=['active', 'completed', 'inactive', 'deleted']);
-        self.status_combo.set('active');
-        self.status_combo.grid(row=3, column=1, sticky="ew", padx=5, pady=2)
-
-        ttk.Button(add_frame, text="Add", command=self.add_enrollment).grid(row=4, column=1, sticky="e", pady=5, padx=5)
-        ttk.Button(master, text="Delete Selected", command=self.delete_enrollment).grid(row=2, column=0, sticky="w")
-
-        return self.tree
-
     def update_person_options(self, event=None):
-        selected_pa = self.pa_combo.get()
+        selected_pa = self.pa_combo.currentText()
         people_options = []
         for uid, person in sorted(self.data_manager.people.items(), key=lambda item: item[1].name):
             if selected_pa == "All Program Areas" or person.program_area_name == selected_pa:
                 people_options.append(f"{person.name} ({uid})")
-        self.person_combo.configure(values=people_options)
-        self.person_combo.set('')
+        self.person_combo.set_completion_list(people_options)
 
     def refresh_enrollments(self):
-        for item in self.tree.get_children(): self.tree.delete(item)
+        self.tree.clear()
         for i, enroll in enumerate(self.section.enrollments):
             person = self.data_manager.people.get(enroll.user_id, Person("Unknown", enroll.user_id))
-            self.tree.insert("", "end", iid=i, values=(enroll.user_id, person.name, enroll.role, enroll.status))
+            item = QTreeWidgetItem([str(enroll.user_id), person.name, enroll.role, enroll.status])
+            item.setData(0, Qt.ItemDataRole.UserRole, i) # Store list index
+            self.tree.addTopLevelItem(item)
 
     def add_enrollment(self):
-        person_str = self.person_combo.get()
-        role = self.role_combo.get()
+        person_str = self.person_combo.currentText()
+        role = self.role_combo.currentText()
+        
         if not person_str or not self.person_combo.is_valid():
-            messagebox.showwarning("Input Error", "Please select a valid person from the list.", parent=self)
+            QMessageBox.warning(self, "Input Error", "Please select a valid person from the list.")
             return
         if not role:
-            messagebox.showwarning("Input Error", "Please select a role.", parent=self)
+            QMessageBox.warning(self, "Input Error", "Please select a role.")
             return
+            
         user_id = person_str[person_str.rfind('(') + 1:-1]
-        status = self.status_combo.get()
+        status = self.status_combo.currentText()
+        
+        # Check for duplicates
+        if any(e.user_id == user_id for e in self.section.enrollments):
+            QMessageBox.warning(self, "Duplicate Error", "This user is already enrolled in this section.")
+            return
+
         enrollment = Enrollment(user_id, role, status)
         self.section.add_enrollment(enrollment)
         self.refresh_enrollments()
-        self.data_manager.save_data()
+        self.data_manager.save_data() # Save changes immediately
 
     def delete_enrollment(self):
-        selected = self.tree.selection()
-        if not selected: return
-        if messagebox.askyesno("Confirm Delete", "Delete selected enrollment(s)?"):
-            indices_to_delete = sorted([int(s) for s in selected], reverse=True)
-            for index in indices_to_delete: del self.section.enrollments[index]
-            self.refresh_enrollments();
-            self.data_manager.save_data()
+        selected = self.tree.selectedItems()
+        if not selected:
+            return
+            
+        reply = QMessageBox.question(self, "Confirm Delete", "Delete selected enrollment(s)?",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                                     
+        if reply == QMessageBox.StandardButton.Yes:
+            # Get indices and sort in reverse
+            indices_to_delete = sorted([item.data(0, Qt.ItemDataRole.UserRole) for item in selected], reverse=True)
+            for index in indices_to_delete:
+                del self.section.enrollments[index]
+            self.refresh_enrollments()
+            self.data_manager.save_data() # Save changes immediately
 
-    def buttonbox(self):
-        box = ttk.Frame(self, style="TFrame");
-        box.pack(pady=10)
-        ttk.Button(box, text="Close", width=10, command=self.ok, default=tk.ACTIVE).pack(side=tk.LEFT, padx=5, pady=5)
-        self.bind("<Return>", self.ok);
-        self.bind("<Escape>", self.cancel)
 
+class ExportDialog(BaseDialog):
+    def __init__(self, parent):
+        super().__init__(parent, "Export to CSV Files")
+        self.data_types = ['people', 'courses', 'program_areas', 'terms', 'accounts']
+        self.dir_path = ""
+        self._create_body()
 
-class ExportDialog(simpledialog.Dialog):
-    def __init__(self, parent, title, theme_colors):
-        self.result = None
-        self.theme_colors = theme_colors
-        self.export_vars = {}
-        self.directory_path = tk.StringVar(value="No directory selected")
-        super().__init__(parent, title)
+    def _create_body(self):
+        # Remove the default form layout widget
+        self.main_layout.removeWidget(self.form_widget)
+        self.form_widget.deleteLater()
 
-    def body(self, master):
-        master.config(bg=self.theme_colors['dialog_bg'])
-        options_frame = ttk.LabelFrame(master, text="Select Data to Export")
-        options_frame.pack(padx=10, pady=10, fill="x")
-        data_types = ['people', 'courses', 'program_areas', 'terms', 'accounts']
-        for i, data_type in enumerate(data_types):
-            var = tk.BooleanVar(value=True)
-            self.export_vars[data_type] = var
-            cb = ttk.Checkbutton(options_frame, text=data_type.replace('_', ' ').title(), variable=var)
-            cb.pack(anchor="w", padx=10, pady=2)
-        dir_frame = ttk.LabelFrame(master, text="Select Export Location")
-        dir_frame.pack(padx=10, pady=5, fill="x")
-        dir_label = ttk.Label(dir_frame, textvariable=self.directory_path, wraplength=300)
-        dir_label.pack(side="left", fill="x", expand=True, padx=5, pady=5)
-        dir_button = ttk.Button(dir_frame, text="Choose...", command=self.choose_directory)
-        dir_button.pack(side="right", padx=5, pady=5)
+        options_frame = QGroupBox("Select Data to Export")
+        options_layout = QVBoxLayout(options_frame)
+        self.widgets = {}
+        for data_type in self.data_types:
+            cb = QCheckBox(data_type.replace('_', ' ').title())
+            cb.setChecked(True)
+            options_layout.addWidget(cb)
+            self.widgets[data_type] = cb
+        self.main_layout.insertWidget(0, options_frame)
+
+        dir_frame = QGroupBox("Select Export Location")
+        dir_layout = QHBoxLayout(dir_frame)
+        self.dir_label = QLineEdit("No directory selected")
+        self.dir_label.setReadOnly(True)
+        dir_button = QPushButton("Choose...")
+        dir_button.clicked.connect(self.choose_directory)
+        dir_layout.addWidget(self.dir_label)
+        dir_layout.addWidget(dir_button)
+        self.main_layout.insertWidget(1, dir_frame)
 
     def choose_directory(self):
-        path = filedialog.askdirectory(title="Select Folder to Save CSV Files")
-        if path: self.directory_path.set(path)
-
-    def buttonbox(self):
-        box = ttk.Frame(self);
-        box.pack(pady=5)
-        ttk.Button(box, text="Export Now", width=15, command=self.ok, default=tk.ACTIVE).pack(side=tk.LEFT, padx=5)
-        ttk.Button(box, text="Cancel", width=10, command=self.cancel).pack(side=tk.LEFT, padx=5)
-        self.bind("<Return>", self.ok);
-        self.bind("<Escape>", self.cancel)
-
-    def apply(self):
-        selected_types = [dt for dt, var in self.export_vars.items() if var.get()]
-        directory = self.directory_path.get()
+        path = QFileDialog.getExistingDirectory(self, "Select Folder to Save CSV Files")
+        if path:
+            self.dir_path = path
+            self.dir_label.setText(path)
+            
+    def validate_form(self):
+        selected_types = [dt for dt, var in self.widgets.items() if var.isChecked()]
         if not selected_types:
-            messagebox.showwarning("Export Error", "Please select at least one data type to export.", parent=self)
-            self.result = None;
-            return
-        if directory == "No directory selected":
-            messagebox.showwarning("Export Error", "Please select a directory to save the files.", parent=self)
-            self.result = None;
-            return
-        self.result = {'types': selected_types, 'directory': directory}
+            QMessageBox.warning(self, "Export Error", "Please select at least one data type to export.")
+            return False
+        if not self.dir_path:
+            QMessageBox.warning(self, "Export Error", "Please select a directory to save the files.")
+            return False
+        return True
+
+    def get_data(self):
+        selected_types = [dt for dt, var in self.widgets.items() if var.isChecked()]
+        return {'types': selected_types, 'directory': self.dir_path}
 
 
-class ImportDialog(simpledialog.Dialog):
-    def __init__(self, parent, title, theme_colors):
-        self.result = None
-        self.theme_colors = theme_colors;
-        self.file_paths = {};
-        self.path_vars = {}
+class ImportDialog(BaseDialog):
+    def __init__(self, parent):
+        super().__init__(parent, "Import from CSV Files")
         self.data_types = ['people', 'courses', 'program_areas', 'terms', 'accounts']
-        super().__init__(parent, title)
+        self.file_paths = {}
+        self._create_body()
 
-    def body(self, master):
-        master.config(bg=self.theme_colors['dialog_bg'])
-        main_frame = ttk.Frame(master);
-        main_frame.pack(padx=10, pady=10)
-        for i, data_type in enumerate(self.data_types):
-            label = ttk.Label(main_frame, text=f"{data_type.replace('_', ' ').title()}:");
-            label.grid(row=i, column=0, sticky="w", padx=5, pady=5)
-            var = tk.StringVar(value="No file selected");
-            self.path_vars[data_type] = var
-            entry = ttk.Entry(main_frame, textvariable=var, state="readonly", width=40);
-            entry.grid(row=i, column=1, sticky="ew", padx=5)
-            button = ttk.Button(main_frame, text="Choose File...", command=lambda dt=data_type: self.choose_file(dt));
-            button.grid(row=i, column=2, sticky="ew", padx=5)
+    def _create_body(self):
+        self.widgets = {}
+        for data_type in self.data_types:
+            path_widget = QWidget()
+            path_layout = QHBoxLayout(path_widget)
+            path_layout.setContentsMargins(0,0,0,0)
+            
+            entry = QLineEdit("No file selected")
+            entry.setReadOnly(True)
+            btn = QPushButton("Choose File...")
+            # Use partial to pass data_type to the slot
+            btn.clicked.connect(partial(self.choose_file, data_type))
+            
+            path_layout.addWidget(entry)
+            path_layout.addWidget(btn)
+            
+            self.add_field(data_type, data_type.replace('_', ' ').title(), path_widget)
+            self.widgets[data_type] = entry # Store the entry to update its text
 
     def choose_file(self, data_type):
-        path = filedialog.askopenfilename(title=f"Select {data_type.title()} CSV File",
-                                          filetypes=[("CSV Files", "*.csv"), ("All Files", "*.*")])
+        path, _ = QFileDialog.getOpenFileName(self, f"Select {data_type.title()} CSV File", "", "CSV Files (*.csv)")
         if path:
             self.file_paths[data_type] = path
-            self.path_vars[data_type].set(os.path.basename(path))
-
-    def buttonbox(self):
-        box = ttk.Frame(self);
-        box.pack(pady=5)
-        ttk.Button(box, text="Import Now", width=15, command=self.ok, default=tk.ACTIVE).pack(side=tk.LEFT, padx=5)
-        ttk.Button(box, text="Cancel", width=10, command=self.cancel).pack(side=tk.LEFT, padx=5)
-        self.bind("<Return>", self.ok);
-        self.bind("<Escape>", self.cancel)
-
-    def apply(self):
+            self.widgets[data_type].setText(os.path.basename(path))
+            
+    def validate_form(self):
         if not self.file_paths:
-            messagebox.showwarning("Import Error", "No files were selected to import.", parent=self);
-            self.result = None;
-            return
-        self.result = self.file_paths
+            QMessageBox.warning(self, "Import Error", "No files were selected to import.")
+            return False
+        return True
+
+    def get_data(self):
+        return self.file_paths
 
 
-class RoleEditDialog(simpledialog.Dialog):
-    def __init__(self, parent, title, theme_colors, initial_data=None, is_new=False):
-        self.canvas_role_entry = None
-        self.display_name_entry = None
-        self.result = None
-        self.theme_colors = theme_colors
+class RoleEditDialog(BaseDialog):
+    def __init__(self, parent, title, initial_data=None, is_new=False):
+        super().__init__(parent, title)
         self.initial_data = initial_data or {}
         self.is_new = is_new
-        super().__init__(parent, title)
+        self._create_body()
 
-    def body(self, master):
-        master.config(bg=self.theme_colors['dialog_bg'])
-        ttk.Label(master, text="Display Name:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
-        self.display_name_entry = ttk.Entry(master, width=30)
-        self.display_name_entry.insert(0, self.initial_data.get('display_name', ''))
-        self.display_name_entry.grid(row=0, column=1, padx=5, pady=2)
+    def _create_body(self):
+        display_name_entry = QLineEdit()
+        display_name_entry.setText(self.initial_data.get('display_name', ''))
         if not self.is_new:
-            self.display_name_entry.config(state="readonly")
-
-        ttk.Label(master, text="Canvas Role Value:").grid(row=1, column=0, sticky="w", padx=5, pady=2)
-        self.canvas_role_entry = ttk.Entry(master, width=30)
-        self.canvas_role_entry.insert(0, self.initial_data.get('canvas_role', ''))
-        self.canvas_role_entry.grid(row=1, column=1, padx=5, pady=2)
-        return self.display_name_entry
-
-    def buttonbox(self):
-        box = ttk.Frame(self, style="TFrame");
-        box.pack(pady=10)
-        ttk.Button(box, text="OK", width=10, command=self.ok, default=tk.ACTIVE).pack(side=tk.LEFT, padx=5, pady=5)
-        ttk.Button(box, text="Cancel", width=10, command=self.cancel).pack(side=tk.LEFT, padx=5, pady=5)
-
-    def apply(self):
-        self.result = {
-            "display_name": self.display_name_entry.get(),
-            "canvas_role": self.canvas_role_entry.get()
+            display_name_entry.setReadOnly(True)
+        self.add_field('display_name', "Display Name", display_name_entry, is_required=True)
+        
+        canvas_role_entry = QLineEdit()
+        canvas_role_entry.setText(self.initial_data.get('canvas_role', ''))
+        self.add_field('canvas_role', "Canvas Role Value", canvas_role_entry, is_required=True)
+        
+    def validate_form(self):
+        if not self.widgets['display_name'].text() or not self.widgets['canvas_role'].text():
+            QMessageBox.warning(self, "Input Error", "Both fields are required.")
+            return False
+        return True
+    
+    def get_data(self):
+        return {
+            "display_name": self.widgets['display_name'].text(),
+            "canvas_role": self.widgets['canvas_role'].text()
         }
 
-
-# --- Main Execution ---
+# --- Main Execution (PyQt6 Version) ---
 if __name__ == "__main__":
+    # Create the application instance
+    qapp = QApplication(sys.argv)
+    
+    # Initialize the data manager
     dm = DataManager()
-    app = App(dm)
-    app.mainloop()
+    
+    # Create and show the main window
+    main_window = App(dm)
+    main_window.show()
+    
+    # Start the application's event loop
+    sys.exit(qapp.exec())
