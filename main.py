@@ -6,7 +6,6 @@ import os
 import json
 import csv
 import inspect
-import webbrowser
 from appdirs import user_data_dir
 from functools import partial
 
@@ -17,7 +16,7 @@ from PyQt6.QtWidgets import (
     QLabel, QLineEdit, QComboBox, QDialog, QDialogButtonBox, QMessageBox,
     QFileDialog, QInputDialog, QCheckBox, QStackedWidget, QCompleter, QFormLayout
 )
-from PyQt6.QtGui import QIcon, QDesktopServices, QAction
+from PyQt6.QtGui import QIcon, QDesktopServices, QAction, QFontMetrics
 from PyQt6.QtCore import Qt, QUrl, QStringListModel
 
 # --- Helper function for finding assets (Unchanged) ---
@@ -44,6 +43,27 @@ APP_AUTHOR = "Harrison Smith"
 DATA_DIR = get_app_data_path(APP_NAME, APP_AUTHOR)
 DATA_FILE = os.path.join(DATA_DIR, 'course_data.json')
 
+
+def set_combo_popup_width(combo: QComboBox):
+    """
+    Manually calculates and sets the minimum width of a QComboBox's popup
+    to fit the widest item, including space for a checkmark.
+    """
+    # Find the widest item
+    fm = combo.fontMetrics()
+    max_width = 0
+    for i in range(combo.count()):
+        text = combo.itemText(i)
+        # Use horizontalAdvance for precise width calculation
+        width = fm.horizontalAdvance(text)
+        if width > max_width:
+            max_width = width
+            
+    # Add buffer for checkmark (~20px) + view margins/padding (~15px)
+    max_width += 35 
+    
+    # Set the minimum width of the popup view
+    combo.view().setMinimumWidth(max_width)
 
 # --- Core Data Models (Unchanged) ---
 class ProgramArea:
@@ -411,8 +431,9 @@ class AutocompleteCombobox(QComboBox):
     """
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.setEditable(True)
-        self.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        #self.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
         self.completer = QCompleter(self)
@@ -423,6 +444,17 @@ class AutocompleteCombobox(QComboBox):
 
         self._model = QStringListModel()
         self.completer.setModel(self._model)
+        self.lineEdit().editingFinished.connect(self._validate_on_finish)
+
+    def _validate_on_finish(self):
+        """
+        Check if the current text is valid when editing is finished.
+        If not, clear it. This replaces the behavior of NoInsert.
+        """
+        # If the current text is not empty and not in our valid list...
+        if self.currentText() and not self.is_valid():
+            # ...clear the text.
+            self.setCurrentText("")
 
     def set_completion_list(self, items):
         """Public method to update the master list of options."""
@@ -522,7 +554,7 @@ LIGHT_THEME = """
     QLineEdit, QComboBox {
         background-color: #FFFFFF;
         border: 1px solid #C0C0C0;
-        padding: 3px;
+        padding: 6px;
         border-radius: 3px;
     }
     QComboBox[readonly="true"] {
@@ -531,6 +563,9 @@ LIGHT_THEME = """
     QLabel[required="true"] {
         color: red;
         font-weight: bold;
+    }
+    QLineEdit:focus, QComboBox:focus {
+    border: 1px solid #4D9FE0; /* Blue focus ring */
     }
 """
 
@@ -622,7 +657,7 @@ DARK_THEME = """
         background-color: #3C3C3C;
         color: #F5F5F5;
         border: 1px solid #606060;
-        padding: 3px;
+        padding: 6px;
         border-radius: 3px;
     }
     QComboBox[readonly="true"] {
@@ -631,6 +666,9 @@ DARK_THEME = """
     QLabel[required="true"] {
         color: red;
         font-weight: bold;
+    }
+    QLineEdit:focus, QComboBox:focus {
+    border: 1px solid #4D9FE0; /* Blue focus ring */
     }
 """
 
@@ -1390,10 +1428,12 @@ class BaseDialog(QDialog):
     def __init__(self, parent, title):
         super().__init__(parent)
         self.setWindowTitle(title)
+        self.setMinimumWidth(450)
         
         self.main_layout = QVBoxLayout(self)
         self.form_widget = QWidget()
         self.form_layout = QFormLayout(self.form_widget)
+        self.form_layout.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
         self.main_layout.addWidget(self.form_widget)
 
         self.button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -1455,7 +1495,7 @@ class ManagementDialog(BaseDialog):
                 
             if key == self.readonly_key:
                 widget.setReadOnly(True)
-                
+
             self.add_field(key, label, widget, is_required=is_required)
 
     def validate_form(self):
@@ -1504,6 +1544,7 @@ class SectionDialog(BaseDialog):
         pa_values = ["All Program Areas"] + sorted(list(self.data_manager.program_areas.keys()))
         pa_combo = QComboBox()
         pa_combo.addItems(pa_values)
+        set_combo_popup_width(pa_combo)
         pa_combo.currentTextChanged.connect(self.update_course_options)
         self.add_field('pa_filter', "Filter by Program Area", pa_combo)
 
@@ -1523,6 +1564,7 @@ class SectionDialog(BaseDialog):
         
         status_combo = QComboBox()
         status_combo.addItems(['active', 'deleted', 'completed', 'published'])
+        set_combo_popup_width(status_combo)
         self.add_field('status', "Status", status_combo, is_required=True)
         
         self.add_field('start_date', "Start Date (YYYY-MM-DD)", QLineEdit())
@@ -1561,12 +1603,20 @@ class SectionDialog(BaseDialog):
         course_str = self.widgets['course'].currentText()
         course_id = course_str[course_str.rfind('(') + 1:-1] if '(' in course_str else ''
         
-        term_str = self.widgets['term'].currentText()
-        term_name = term_str.rsplit(' (', 1)[0] if ' (' in term_str else ''
+        term_str = self.widgets['term'].currentText() 
+        term_name = '' 
+
+        for t_name, t_obj in self.data_manager.terms.items():
+             display_text = f"{t_obj.name} ({t_obj.term_id})"
+             if display_text == term_str:
+                 term_name = t_obj.name
+                 break
+
+        print(f"DEBUG: term_str='{term_str}', found term_name='{term_name}'") 
         
         return {
             'course_id_portion': course_id,
-            'term_name': term_name,
+            'term_name': term_name, # Use the reliably found name
             'account_id': self.widgets['account'].currentText(),
             'section_number': self.widgets['section_number'].text(),
             'status': self.widgets['status'].currentText(),
@@ -1600,6 +1650,7 @@ class EnrollmentDialog(QDialog):
         pa_values = ["All Program Areas"] + sorted(list(self.data_manager.program_areas.keys()))
         self.pa_combo = QComboBox()
         self.pa_combo.addItems(pa_values)
+        set_combo_popup_width(self.pa_combo)
         self.pa_combo.currentTextChanged.connect(self.update_person_options)
         form_layout.addRow("Filter by Program Area:", self.pa_combo)
 
@@ -1608,10 +1659,12 @@ class EnrollmentDialog(QDialog):
         
         self.role_combo = QComboBox()
         self.role_combo.addItems(sorted(list(self.data_manager.enrollment_roles.keys())))
+        set_combo_popup_width(self.role_combo)
         form_layout.addRow(QLabel('Role: <span style="color:red;">*</span>'), self.role_combo)
         
         self.status_combo = QComboBox()
         self.status_combo.addItems(['active', 'completed', 'inactive', 'deleted'])
+        set_combo_popup_width(self.status_combo)
         form_layout.addRow(QLabel('Status: <span style="color:red;">*</span>'), self.status_combo)
         
         add_btn = QPushButton("Add")
